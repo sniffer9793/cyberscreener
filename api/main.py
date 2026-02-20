@@ -45,12 +45,17 @@ init_db()
 # Serve dashboard HTML from the API itself
 from fastapi.responses import HTMLResponse
 
-@app.get("/dashboard", response_class=HTMLResponse)
+DASHBOARD_HTML = open(Path(__file__).parent / "dashboard_embed.html").read() if (Path(__file__).parent / "dashboard_embed.html").exists() else ""
+
+@app.get("/", response_class=HTMLResponse)
 def serve_dashboard():
-    dash_path = Path(__file__).parent.parent / "dashboard.html"
-    if dash_path.exists():
-        return dash_path.read_text()
-    return "<h1>Dashboard not found. Place dashboard.html in the project root.</h1>"
+    if DASHBOARD_HTML:
+        return DASHBOARD_HTML
+    return "<h1>Dashboard loading...</h1>"
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def serve_dashboard_alt():
+    return serve_dashboard()
 
 
 # ─── Auth ───
@@ -294,14 +299,12 @@ _scan_status = {"running": False, "last_scan_id": None, "message": ""}
 # ENDPOINTS
 # ─────────────────────────────────────────────
 
-@app.get("/")
-def root():
+@app.get("/api/info")
+def api_info():
     return {
         "service": "CyberScreener API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "total_scans": get_scan_count(),
-        "endpoints": ["/scan", "/scores/{ticker}", "/scores/latest",
-                       "/backtest", "/stats", "/tickers"],
     }
 
 
