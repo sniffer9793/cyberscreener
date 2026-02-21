@@ -195,37 +195,46 @@ def fetch_ticker_data(ticker):
             except Exception:
                 pass
 
-        # IV and IV Rank
+        # IV, IV Rank, and Whale Flow — single fetch, reused for all three
         iv_30d = None
         iv_rank = None
+        fetched_chains = []
+        options_dates = []
         try:
-            options_dates = t.options
-            if options_dates:
-                nearest = options_dates[0]
-                opt_chain = t.option_chain(nearest)
-                calls = opt_chain.calls
-                if not calls.empty and 'impliedVolatility' in calls.columns:
-                    current_iv = float(calls['impliedVolatility'].median() * 100)
-                    iv_30d = round(current_iv, 1)
-
-                    # IV Rank: where is current IV vs 52-week range?
-                    # Use historical close volatility as proxy for IV range
-                    hist_vol = float(close.pct_change().rolling(20).std().iloc[-1] * np.sqrt(252) * 100)
-                    iv_52w_low = hist_vol * 0.6  # approximate
-                    iv_52w_high = hist_vol * 1.8  # approximate
-                    if iv_52w_high > iv_52w_low:
-                        iv_rank = round(min(100, max(0, (current_iv - iv_52w_low) / (iv_52w_high - iv_52w_low) * 100)), 1)
+            options_dates = list(t.options) if t.options else []
         except Exception:
             pass
 
-        # ── WHALE FLOW DETECTION ──
-        # Analyze the options chain we already fetched for unusual activity
+        if options_dates:
+            for exp in options_dates[:3]:
+                try:
+                    chain = t.option_chain(exp)
+                    fetched_chains.append((exp, chain))
+                except Exception:
+                    continue
+
+            if fetched_chains:
+                try:
+                    _, nearest_chain = fetched_chains[0]
+                    calls = nearest_chain.calls
+                    if not calls.empty and 'impliedVolatility' in calls.columns:
+                        current_iv = float(calls['impliedVolatility'].median() * 100)
+                        iv_30d = round(current_iv, 1)
+                        hist_vol = float(close.pct_change().rolling(20).std().iloc[-1] * np.sqrt(252) * 100)
+                        iv_52w_low = hist_vol * 0.6
+                        iv_52w_high = hist_vol * 1.8
+                        if iv_52w_high > iv_52w_low:
+                            iv_rank = round(min(100, max(0, (current_iv - iv_52w_low) / (iv_52w_high - iv_52w_low) * 100)), 1)
+                except Exception:
+                    pass
+
+        # ── WHALE FLOW DETECTION — uses pre-fetched chains, zero extra calls ──
         whale_data = {"whale_score": 0, "whale_signals": [], "pc_ratio": None,
                       "unusual_calls": 0, "unusual_puts": 0, "whale_bias": "neutral",
                       "top_flow": []}
         try:
-            if options_dates:
-                whale_data = detect_whale_flow(t, price, options_dates[:3])
+            if fetched_chains:
+                whale_data = detect_whale_flow_from_chains(fetched_chains, price)
         except Exception:
             pass
 
