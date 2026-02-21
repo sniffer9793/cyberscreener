@@ -200,6 +200,17 @@ def fetch_ticker_data(ticker):
         except Exception:
             pass
 
+        # ── WHALE FLOW DETECTION ──
+        # Analyze the options chain we already fetched for unusual activity
+        whale_data = {"whale_score": 0, "whale_signals": [], "pc_ratio": None,
+                      "unusual_calls": 0, "unusual_puts": 0, "whale_bias": "neutral",
+                      "top_flow": []}
+        try:
+            if options_dates:
+                whale_data = detect_whale_flow(t, price, options_dates[:3])
+        except Exception:
+            pass
+
         # Performance calculations
         perf_1y = round(((price / price_1y_ago) - 1) * 100, 1) if price_1y_ago > 0 else 0
         perf_3m = round(((price / price_3m_ago) - 1) * 100, 1) if price_3m_ago > 0 else 0
@@ -241,9 +252,203 @@ def fetch_ticker_data(ticker):
             "price_above_sma20": price > sma_20,
             "price_above_sma50": price > sma_50 if sma_50 else None,
             "price_above_sma200": price > sma_200 if sma_200 else None,
+            # Whale flow
+            "whale_score": whale_data.get("whale_score", 0),
+            "whale_signals": whale_data.get("whale_signals", []),
+            "whale_bias": whale_data.get("whale_bias", "neutral"),
+            "pc_ratio": whale_data.get("pc_ratio"),
+            "unusual_calls": whale_data.get("unusual_calls", 0),
+            "unusual_puts": whale_data.get("unusual_puts", 0),
+            "top_flow": whale_data.get("top_flow", []),
         }
     except Exception as e:
         return None
+
+
+# ─────────────────────────────────────────────
+# WHALE FLOW DETECTION
+# ─────────────────────────────────────────────
+
+def detect_whale_flow(ticker_obj, current_price, expiry_dates):
+    """
+    Detect unusual options activity (whale flow) from existing chain data.
+    Zero additional API calls — uses the same data we fetch for IV.
+
+    Detects:
+    1. Volume >> Open Interest on a strike (new positions being opened)
+    2. Large absolute volume on OTM options (smart money bets)
+    3. Put/Call ratio skew (institutional hedging or directional bets)
+    4. Premium sweeps (big $ flowing into specific strikes)
+
+    Returns dict with whale_score (0-100), signals, bias, and top flow details.
+    """
+    signals = []
+    unusual_calls = 0
+    unusual_puts = 0
+    total_call_volume = 0
+    total_put_volume = 0
+    total_call_oi = 0
+    total_put_oi = 0
+    top_flow = []  # Top unusual trades
+
+    for exp in expiry_dates:
+        try:
+            chain = ticker_obj.option_chain(exp)
+        except Exception:
+            continue
+
+        for side, df in [("call", chain.calls), ("put", chain.puts)]:
+            if df.empty:
+                continue
+
+            for _, row in df.iterrows():
+                strike = row.get("strike", 0)
+                vol = int(row.get("volume", 0) or 0)
+                oi = int(row.get("openInterest", 0) or 0)
+                iv = float(row.get("impliedVolatility", 0) or 0)
+                bid = float(row.get("bid", 0) or 0)
+                ask = float(row.get("ask", 0) or 0)
+                itm = row.get("inTheMoney", False)
+
+                mid_price = (bid + ask) / 2 if ask > 0 else float(row.get("lastPrice", 0) or 0)
+                premium_total = vol * mid_price * 100  # Total $ flowing
+
+                # Track totals
+                if side == "call":
+                    total_call_volume += vol
+                    total_call_oi += oi
+                else:
+                    total_put_volume += vol
+                    total_put_oi += oi
+
+                # ── Detection 1: Volume >> Open Interest (new positions) ──
+                # If volume is 3x+ open interest, these are NEW positions being opened
+                vol_oi_ratio = vol / oi if oi > 0 else (vol if vol > 0 else 0)
+
+                is_unusual = False
+
+                if vol > 500 and vol_oi_ratio > 3:
+                    is_unusual = True
+                    if side == "call":
+                        unusual_calls += 1
+                    else:
+                        unusual_puts += 1
+
+                # ── Detection 2: Large OTM bets (conviction trades) ──
+                otm_distance = abs(strike - current_price) / current_price * 100
+                if not itm and vol > 1000 and otm_distance > 5 and premium_total > 50000:
+                    is_unusual = True
+                    if side == "call":
+                        unusual_calls += 1
+                    else:
+                        unusual_puts += 1
+
+                # ── Detection 3: Premium sweeps (big money) ──
+                if premium_total > 200000 and vol > 200:
+                    is_unusual = True
+
+                # Record top flow
+                if is_unusual and premium_total > 10000:
+                    top_flow.append({
+                        "type": side,
+                        "strike": strike,
+                        "expiry": exp,
+                        "volume": vol,
+                        "open_interest": oi,
+                        "vol_oi_ratio": round(vol_oi_ratio, 1),
+                        "premium_total": round(premium_total, 0),
+                        "iv": round(iv * 100, 1),
+                        "otm_pct": round(otm_distance, 1),
+                        "itm": itm,
+                    })
+
+    # Sort top flow by premium
+    top_flow.sort(key=lambda x: x["premium_total"], reverse=True)
+    top_flow = top_flow[:5]  # Keep top 5
+
+    # ── Put/Call Ratio ──
+    pc_ratio = None
+    if total_call_volume > 0:
+        pc_ratio = round(total_put_volume / total_call_volume, 2)
+
+    # ── Determine whale bias ──
+    if unusual_calls > unusual_puts + 2:
+        whale_bias = "bullish"
+    elif unusual_puts > unusual_calls + 2:
+        whale_bias = "bearish"
+    elif unusual_calls > 0 or unusual_puts > 0:
+        whale_bias = "active"
+    else:
+        whale_bias = "neutral"
+
+    # ── Build signals list ──
+    if unusual_calls > 0:
+        signals.append(f"🐋 {unusual_calls} unusual call{'s' if unusual_calls > 1 else ''} detected")
+    if unusual_puts > 0:
+        signals.append(f"🐋 {unusual_puts} unusual put{'s' if unusual_puts > 1 else ''} detected")
+    if top_flow:
+        biggest = top_flow[0]
+        signals.append(
+            f"💰 Largest flow: ${biggest['premium_total']:,.0f} in "
+            f"${biggest['strike']:.0f} {biggest['type']}s ({biggest['expiry']})"
+        )
+    if pc_ratio is not None:
+        if pc_ratio > 1.5:
+            signals.append(f"📊 High P/C ratio ({pc_ratio:.2f}) — heavy put activity")
+        elif pc_ratio < 0.5:
+            signals.append(f"📊 Low P/C ratio ({pc_ratio:.2f}) — heavy call activity")
+
+    # ── Compute whale score (0-100) ──
+    whale_score = 0
+
+    # Unusual activity count (max 40 pts)
+    total_unusual = unusual_calls + unusual_puts
+    if total_unusual >= 8:
+        whale_score += 40
+    elif total_unusual >= 5:
+        whale_score += 30
+    elif total_unusual >= 3:
+        whale_score += 20
+    elif total_unusual >= 1:
+        whale_score += 10
+
+    # Premium size (max 30 pts)
+    if top_flow:
+        max_premium = top_flow[0]["premium_total"]
+        if max_premium > 1000000:
+            whale_score += 30
+        elif max_premium > 500000:
+            whale_score += 20
+        elif max_premium > 100000:
+            whale_score += 15
+        elif max_premium > 50000:
+            whale_score += 8
+
+    # Directional conviction — one-sided flow is stronger signal (max 20 pts)
+    if total_unusual > 0:
+        if unusual_calls > 0 and unusual_puts == 0:
+            whale_score += 20  # Pure bullish whale flow
+        elif unusual_puts > 0 and unusual_calls == 0:
+            whale_score += 20  # Pure bearish whale flow
+        elif abs(unusual_calls - unusual_puts) > 3:
+            whale_score += 10  # Skewed but mixed
+
+    # P/C ratio extremes (max 10 pts)
+    if pc_ratio is not None:
+        if pc_ratio > 2.0 or pc_ratio < 0.3:
+            whale_score += 10
+        elif pc_ratio > 1.5 or pc_ratio < 0.5:
+            whale_score += 5
+
+    return {
+        "whale_score": min(100, whale_score),
+        "whale_signals": signals,
+        "whale_bias": whale_bias,
+        "pc_ratio": pc_ratio,
+        "unusual_calls": unusual_calls,
+        "unusual_puts": unusual_puts,
+        "top_flow": top_flow,
+    }
 
 
 # ─────────────────────────────────────────────
@@ -648,21 +853,40 @@ def score_options(row, weights=None):
                                "raw_value": mcap}
     score += pts
 
-    # ── 6. ASYMMETRY POTENTIAL ──
+    # ── 6. ASYMMETRY POTENTIAL (+ WHALE FLOW) ──
     short_pct = row.get("short_pct") or 0
+    whale_score_raw = row.get("whale_score") or 0
+    whale_bias = row.get("whale_bias") or "neutral"
 
     asym_raw = 0
+
+    # Short squeeze potential
     if short_pct > 15:
-        asym_raw += 0.5
+        asym_raw += 0.3
         reasons.append(f"📌 High short interest ({short_pct:.0f}%) — squeeze potential")
     elif short_pct > 8:
-        asym_raw += 0.25
+        asym_raw += 0.15
 
+    # Beta amplification
     if beta_val > 1.8:
-        asym_raw += 0.35
+        asym_raw += 0.2
         reasons.append(f"⚡ High beta ({beta_val:.1f}) — amplified moves")
     elif beta_val > 1.3:
-        asym_raw += 0.2
+        asym_raw += 0.1
+
+    # Whale flow integration — this is the big new signal
+    if whale_score_raw >= 50:
+        asym_raw += 0.5
+        reasons.append(f"🐋 Strong whale flow (score {whale_score_raw}) — institutional positioning detected")
+    elif whale_score_raw >= 30:
+        asym_raw += 0.3
+        reasons.append(f"🐋 Moderate whale activity (score {whale_score_raw})")
+    elif whale_score_raw >= 10:
+        asym_raw += 0.15
+
+    # Whale directional alignment with technical signals boosts conviction
+    if whale_bias in ("bullish", "bearish") and whale_bias == direction:
+        asym_raw += 0.15  # Whales agree with technicals
 
     raw = min(1.0, asym_raw)
 
@@ -1060,7 +1284,11 @@ def run_scan(tickers=None, enable_sec=True, callback=None):
 
             data["sec_intel"] = None
             data["sentiment"] = None
-            data["whale_flow"] = None
+            # Whale flow is already in data from fetch_ticker_data
+            # Add whale signals to the reasons lists for the dashboard
+            whale_sigs = data.get("whale_signals", [])
+            if whale_sigs:
+                data["opt_reasons"] = opt_reasons + whale_sigs
             results.append(data)
 
         time.sleep(0.15)

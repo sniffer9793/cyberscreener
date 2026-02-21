@@ -196,7 +196,7 @@ def init_db():
     conn.close()
 
 
-def save_scan(results, intel_layers=None, duration_seconds=None):
+def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
     """Save a complete scan to the database. Returns scan_id."""
     conn = get_db()
 
@@ -382,5 +382,6 @@ def get_scan_count():
     conn.close()
     return count
 
-# Backward-compatible alias
+
+# ── Backward-compatible aliases for old code (scheduler.py, db/__init__.py) ──
 get_price_on_date = get_nearest_price
