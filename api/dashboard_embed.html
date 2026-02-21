@@ -192,10 +192,12 @@ F('/stats').then(function(s){
   return F('/scores/latest?limit=50');
 }).then(function(l){
   D.latest=l;
-  return F('/backtest?days=180&forward_period=30');
-}).then(function(b){
-  D.backtest=b;
   render();
+  // Load backtest in background — don't block dashboard
+  F('/backtest?days=180&forward_period=30').then(function(b){
+    D.backtest=b;
+    if(currentTab==='backtest')rBacktest();
+  });
 });
 </script>
 </body>
