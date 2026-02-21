@@ -4,207 +4,428 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CyberScreener</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0a0e17;color:#e2e8f0;font-family:'DM Sans',-apple-system,sans-serif}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0f1520}::-webkit-scrollbar-thumb{background:#243049;border-radius:3px}
-.mono{font-family:'JetBrains Mono',monospace}
-.hdr{padding:16px 28px;border-bottom:1px solid #1a2235;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,#0f1520,#0a0e17)}
-.tabs{padding:12px 28px;display:flex;gap:8px;border-bottom:1px solid #1a2235}
-.tab{padding:10px 20px;background:transparent;border:1px solid #1a2235;border-radius:8px;color:#64748b;font-size:13px;font-weight:500;cursor:pointer;font-family:'JetBrains Mono',monospace;transition:all .15s}
-.tab.on{background:#00e5a012;border-color:#00e5a040;color:#00e5a0;font-weight:700}
-.tab:hover{border-color:#243049}
-.main{padding:24px 28px;max-width:1280px;margin:0 auto}
-.card{background:#0f1520;border:1px solid #1a2235;border-radius:10px;padding:20px;margin-bottom:16px}
-.grid{display:grid;gap:12px}.g5{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.g2{grid-template-columns:1fr 1fr}
-.metric{padding:14px 16px;background:#0f1520;border-radius:8px;border:1px solid #1a2235}
-.metric-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
-.metric-val{font-size:26px;font-weight:800;font-family:'JetBrains Mono',monospace;line-height:1}
-.metric-sub{font-size:11px;color:#64748b;margin-top:4px}
-.row{display:grid;grid-template-columns:24px 56px 1fr 70px;align-items:center;gap:8px;padding:5px 0}
-.row-tk{font-size:13px;font-weight:700;color:#e2e8f0;font-family:'JetBrains Mono',monospace}
-.dim{color:#64748b}.mid{color:#94a3b8}
-.sec-title{font-size:18px;font-weight:800;letter-spacing:-.3px;margin-bottom:2px}
-.sec-sub{font-size:12px;color:#64748b;margin-bottom:12px}
-.btn{padding:8px 18px;border-radius:6px;border:1px solid #00e5a040;background:#00e5a015;color:#00e5a0;font-size:12px;font-weight:700;cursor:pointer;font-family:'JetBrains Mono',monospace}
-.btn:hover{background:#00e5a025}
-.btn-p{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid #1a2235;background:#0f1520;color:#64748b}
-.btn-p.on{background:#00e5a015;border-color:#00e5a040;color:#00e5a0}
-.ticker-list{width:320px;flex-shrink:0;max-height:70vh;overflow-y:auto}
-.tkr{display:grid;grid-template-columns:56px 1fr 44px 44px;align-items:center;gap:6px;padding:8px 10px;border-radius:6px;cursor:pointer;border-left:3px solid transparent}
-.tkr:hover{background:#141c2b}.tkr.sel{background:#00e5a010;border-left-color:#00e5a0}
-.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
-.dot{width:7px;height:7px;border-radius:50%;display:inline-block;background:#00e5a0;box-shadow:0 0 8px #00e5a060}
-.tip{padding:12px 16px;background:#0a0e17;border:1px solid #1a2235;border-radius:8px;margin-bottom:12px;font-size:12px;color:#94a3b8;line-height:1.6}
-.tip b{color:#e2e8f0;font-weight:600}
-.tip-icon{display:inline-block;width:18px;height:18px;border-radius:50%;background:#00e5a015;color:#00e5a0;text-align:center;line-height:18px;font-size:10px;font-weight:800;margin-right:6px}
-.layer{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace}
-.layer-on{background:#00e5a015;color:#00e5a0;border:1px solid #00e5a030}
-.layer-off{background:#1a2235;color:#475569;border:1px solid #1a223580}
-.component{display:flex;align-items:center;gap:6px;padding:4px 0}
+code{font-family:'JetBrains Mono',monospace;background:#141c2b;padding:2px 6px;border-radius:4px;font-size:12px}
 .pulse{animation:pulse 1.5s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
-@media(max-width:768px){.g2{grid-template-columns:1fr}.tabs{flex-wrap:wrap}.ticker-list{width:100%}}
 </style>
 </head>
 <body>
-<div id="app"><div style="padding:60px;text-align:center;color:#64748b">Loading CyberScreener...</div></div>
-<script>
-var currentTab='overview',D={},selTk=null,tkH=null,btP=30,playsData=null,playsTk=null,playsPoller=null,playsMsg='';
-function qs(s){return document.querySelector(s)}
-function F(u,o){return fetch(u,o).then(function(r){return r.ok?r.json():null}).catch(function(){return null})}
-function sc(s,h,m){h=h||60;m=m||35;return s>=h?'#00e5a0':s>=m?'#ffb020':'#ff3b5c'}
-function bar(s){var p=Math.max(0,Math.min(100,s)),c=sc(s);return'<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:6px;background:#1a2235;border-radius:3px;overflow:hidden"><div style="width:'+p+'%;height:100%;background:'+c+';border-radius:3px"></div></div><span class="mono" style="font-size:13px;font-weight:700;color:'+c+';min-width:28px">'+s+'</span></div>'}
-function met(l,v,c,sub){return'<div class="metric"><div class="metric-label">'+l+'</div><div class="metric-val" style="color:'+(c||'#e2e8f0')+'">'+v+'</div>'+(sub?'<div class="metric-sub">'+sub+'</div>':'')+'</div>'}
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useCallback,useRef}=React;
+const {LineChart,Line,BarChart,Bar,XAxis,YAxis,Tooltip,ResponsiveContainer,CartesianGrid,Cell,Legend,Area,AreaChart}=Recharts;
 
+const C={bg:"#0a0e17",bgCard:"#0f1520",bgHover:"#141c2b",border:"#1a2235",borderLight:"#243049",green:"#00e5a0",greenDim:"#00e5a030",red:"#ff3b5c",redDim:"#ff3b5c30",amber:"#ffb020",amberDim:"#ffb02030",blue:"#3b82f6",blueDim:"#3b82f620",purple:"#a855f7",text:"#e2e8f0",textDim:"#64748b",textMid:"#94a3b8"};
+const mono="'JetBrains Mono',monospace";
+
+async function api(path,opts){try{const r=await fetch(path,opts);if(!r.ok)throw new Error(r.status);return await r.json()}catch(e){console.error("API "+path+":",e);return null}}
+
+function Badge({children,color=C.green}){return React.createElement("span",{style:{display:"inline-block",padding:"2px 8px",borderRadius:4,fontSize:11,fontWeight:700,background:color+"18",color,border:"1px solid "+color+"30"}},children)}
+
+function Metric({label,value,sub,color}){return React.createElement("div",{style:{padding:"14px 16px",background:C.bgCard,borderRadius:8,border:"1px solid "+C.border}},React.createElement("div",{style:{fontSize:11,color:C.textDim,textTransform:"uppercase",letterSpacing:1,marginBottom:6}},label),React.createElement("div",{style:{fontSize:26,fontWeight:800,color:color||C.text,fontFamily:mono,lineHeight:1}},value),sub&&React.createElement("div",{style:{fontSize:11,color:C.textDim,marginTop:4}},sub))}
+
+function ScoreBar({score}){const pct=Math.max(0,Math.min(100,score));const color=score>=60?C.green:score>=35?C.amber:C.red;return React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},React.createElement("div",{style:{flex:1,height:6,background:C.border,borderRadius:3,overflow:"hidden"}},React.createElement("div",{style:{width:pct+"%",height:"100%",background:color,borderRadius:3,transition:"width 0.6s"}})),React.createElement("span",{style:{fontSize:13,fontWeight:700,color,fontFamily:mono,minWidth:28}},score))}
+
+function Tip({children}){return React.createElement("div",{style:{padding:"12px 16px",background:C.bg,border:"1px solid "+C.border,borderRadius:8,marginBottom:12,fontSize:12,color:C.textMid,lineHeight:1.6}},React.createElement("span",{style:{display:"inline-block",width:18,height:18,borderRadius:"50%",background:C.green+"15",color:C.green,textAlign:"center",lineHeight:"18px",fontSize:10,fontWeight:800,marginRight:6}},"?"),children)}
+
+function LayerPill({name,icon,score}){const on=score&&score>0;return React.createElement("span",{style:{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:4,fontSize:10,fontWeight:600,fontFamily:mono,background:on?C.green+"15":"#1a2235",color:on?C.green:"#475569",border:"1px solid "+(on?C.green+"30":"#1a223580")}},icon," ",name," ",on?"+"+score:"OFF")}
+
+// Score breakdown helpers
 function ltBreakdown(r){
-  var rg=r.revenue_growth_pct||0,ps=r.ps_ratio||0,gm=r.gross_margin_pct||0,fcf=r.fcf_m||0,disc=r.pct_from_52w_high||0;
-  return[
-    {l:'Revenue Growth',v:rg>25?30:rg>15?15:rg>0?5:-10,m:30,d:rg?rg+'%':'—'},
-    {l:'Valuation',v:(ps<5&&rg>15)?25:(ps<10&&rg>20)?15:ps>30?-10:0,m:25,d:ps?ps+'x P/S':'—'},
-    {l:'Gross Margin',v:gm>75?20:gm>60?10:gm<40?-10:0,m:20,d:gm?gm+'%':'—'},
-    {l:'Free Cash Flow',v:fcf>500?20:fcf>0?10:-5,m:20,d:fcf?'$'+fcf+'M':'—'},
-    {l:'52w Discount',v:disc<-30?15:disc<-15?8:0,m:15,d:disc?disc+'%':'—'}
-  ];
+  const rg=r.revenue_growth_pct||0,ps=r.ps_ratio||0,gm=r.gross_margin_pct||0,fcf=r.fcf_m||0,disc=r.pct_from_52w_high||0;
+  return[{l:"Revenue Growth",v:rg>25?30:rg>15?15:rg>0?5:-10,m:30,d:rg?rg+"%":"—"},{l:"Valuation",v:(ps<5&&rg>15)?25:(ps<10&&rg>20)?15:ps>30?-10:0,m:25,d:ps?ps+"x P/S":"—"},{l:"Gross Margin",v:gm>75?20:gm>60?10:gm<40?-10:0,m:20,d:gm?gm+"%":"—"},{l:"Free Cash Flow",v:fcf>500?20:fcf>0?10:-5,m:20,d:fcf?"$"+fcf+"M":"—"},{l:"52w Discount",v:disc<-30?15:disc<-15?8:0,m:15,d:disc?disc+"%":"—"}];
 }
 function optBreakdown(r){
-  var dte=r.days_to_earnings,iv=r.iv_30d||0,vr=r.vol_ratio||1,rsi=r.rsi||50,bb=r.bb_width||999,beta=r.beta||1,sp=r.short_pct||0;
-  var ev=0;if(dte!=null){if(dte>=5&&dte<=14)ev=35;else if(dte>=15&&dte<=30)ev=25;else if(dte>=1&&dte<=4)ev=15}
-  return[
-    {l:'Earnings',v:ev,m:35,d:dte!=null?dte+'d':'—'},
-    {l:'IV',v:iv>60?20:iv>40?10:0,m:20,d:iv?iv+'%':'—'},
-    {l:'Volume',v:vr>2?20:vr>1.5?10:0,m:20,d:vr+'x'},
-    {l:'RSI',v:rsi<30?15:rsi>70?10:0,m:15,d:Math.round(rsi)+''},
-    {l:'BB Squeeze',v:bb<10?15:bb<15?8:0,m:15,d:bb<999?bb+'%':'—'},
-    {l:'Beta',v:beta>1.5?10:0,m:10,d:beta+''},
-    {l:'Short %',v:sp>10?10:0,m:10,d:sp?sp+'%':'—'}
-  ];
+  const dte=r.days_to_earnings,iv=r.iv_30d||0,vr=r.vol_ratio||1,rsi=r.rsi||50,bb=r.bb_width||999,beta=r.beta||1,sp=r.short_pct||0;
+  let ev=0;if(dte!=null){if(dte>=5&&dte<=14)ev=35;else if(dte>=15&&dte<=30)ev=25;else if(dte>=1&&dte<=4)ev=15}
+  return[{l:"Earnings",v:ev,m:35,d:dte!=null?dte+"d":"—"},{l:"IV",v:iv>60?20:iv>40?10:0,m:20,d:iv?iv+"%":"—"},{l:"Volume",v:vr>2?20:vr>1.5?10:0,m:20,d:vr+"x"},{l:"RSI",v:rsi<30?15:rsi>70?10:0,m:15,d:Math.round(rsi)+""},{l:"BB Squeeze",v:bb<10?15:bb<15?8:0,m:15,d:bb<999?bb+"%":"—"},{l:"Beta",v:beta>1.5?10:0,m:10,d:beta+""},{l:"Short%",v:sp>10?10:0,m:10,d:sp?sp+"%":"—"}];
 }
-function rBD(items){
-  var h='';for(var i=0;i<items.length;i++){var it=items[i];var c=it.v>0?'#00e5a0':it.v<0?'#ff3b5c':'#243049';var w=it.v>0?Math.min(100,(it.v/it.m)*100):0;
-  h+='<div class="component"><span style="font-size:10px;color:#64748b;min-width:75px">'+it.l+'</span><div style="flex:1;height:4px;background:#1a2235;border-radius:2px;overflow:hidden"><div style="width:'+w+'%;height:100%;background:'+c+';border-radius:2px"></div></div><span class="mono" style="font-size:11px;font-weight:700;color:'+c+';min-width:24px;text-align:right">'+(it.v>0?'+':'')+it.v+'</span><span style="font-size:9px;color:#475569;min-width:48px;text-align:right">'+it.d+'</span></div>';}
-  return h;
-}
-function layerPills(r){var s=r.sec_score||0,se=r.sentiment_score||0,w=r.whale_score||0;return'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="layer '+(s?'layer-on':'layer-off')+'">📋 SEC '+(s?'+'+s:'OFF')+'</span><span class="layer '+(se?'layer-on':'layer-off')+'">💬 Sent '+(se?'+'+se:'OFF')+'</span><span class="layer '+(w?'layer-on':'layer-off')+'">🐋 Whale '+(w?'+'+w:'OFF')+'</span></div>';}
+function Breakdown({items,accent}){return React.createElement("div",{style:{padding:12,background:C.bg,borderRadius:8,border:"1px solid "+C.border}},React.createElement("div",{style:{fontSize:12,fontWeight:700,marginBottom:8,color:accent||C.green}},items===null?"Loading...":"Score Components"),items&&items.map((it,i)=>{const c=it.v>0?C.green:it.v<0?C.red:C.border;const w=it.v>0?Math.min(100,(it.v/it.m)*100):0;return React.createElement("div",{key:i,style:{display:"flex",alignItems:"center",gap:6,padding:"3px 0"}},React.createElement("span",{style:{fontSize:10,color:C.textDim,minWidth:75}},it.l),React.createElement("div",{style:{flex:1,height:4,background:C.border,borderRadius:2,overflow:"hidden"}},React.createElement("div",{style:{width:w+"%",height:"100%",background:c,borderRadius:2}})),React.createElement("span",{style:{fontSize:11,fontWeight:700,color:c,fontFamily:mono,minWidth:24,textAlign:"right"}},(it.v>0?"+":"")+it.v),React.createElement("span",{style:{fontSize:9,color:"#475569",minWidth:48,textAlign:"right"}},it.d))}))}
 
-function render(){
-  qs('#app').innerHTML='<div class="hdr"><div style="display:flex;align-items:center;gap:12px"><span style="font-size:22px">🛡️</span><div><div style="font-size:18px;font-weight:800;color:#00e5a0">CyberScreener</div><div style="font-size:10px;color:#64748b;letter-spacing:2px;text-transform:uppercase">Cybersecurity Investment Intelligence</div></div></div><div style="display:flex;align-items:center;gap:12px"><span class="dot"></span><span class="dim" style="font-size:11px">Online</span><button class="btn" id="sb" onclick="doScan()">▶ Run Scan</button></div></div><nav class="tabs"><button class="tab '+(currentTab==='overview'?'on':'')+'" onclick="switchTab(\'overview\')">◉ Overview</button><button class="tab '+(currentTab==='scores'?'on':'')+'" onclick="switchTab(\'scores\')">◆ Scores</button><button class="tab '+(currentTab==='plays'?'on':'')+'" onclick="switchTab(\'plays\')">⚡ Plays</button><button class="tab '+(currentTab==='backtest'?'on':'')+'" onclick="switchTab(\'backtest\')">◈ Backtest</button></nav><div class="main" id="ct"></div><footer style="padding:16px 28px;border-top:1px solid #1a2235;text-align:center"><span style="font-size:10px;color:#64748b">CyberScreener v2.0 — Not financial advice. Scores are algorithmic signals, not buy/sell recommendations.</span></footer>';
-  if(currentTab==='overview')rOverview();else if(currentTab==='scores')rScores();else if(currentTab==='plays')rPlays();else rBacktest();
-}
-function switchTab(t){currentTab=t;render()}
+// ─── Overview Tab ───
+function OverviewTab({stats,latest}){
+  if(!stats)return React.createElement("div",{style:{color:C.textDim,padding:40,textAlign:"center"}},"Loading...");
+  const res=latest?.results||[];
+  const topLT=res.slice(0,10);
+  const topOpt=[...res].sort((a,b)=>b.opt_score-a.opt_score).slice(0,10);
+  const rsiData=[...res].sort((a,b)=>a.rsi-b.rsi);
 
-function rOverview(){
-  var s=D.stats||{},res=(D.latest&&D.latest.results)?D.latest.results:[];
-  var lt=res.slice(0,10),opt=res.slice().sort(function(a,b){return b.opt_score-a.opt_score}).slice(0,10),rsi=res.slice().sort(function(a,b){return a.rsi-b.rsi});
-  var h='<div class="tip"><span class="tip-icon">?</span> <b>How scores work:</b> CyberScreener scans '+res.length+' cybersecurity stocks every 2h. <b>LT Score</b> = long-term quality (revenue growth, margins, valuation, FCF, discount). <b>Opt Score</b> = options opportunity (earnings timing, IV, volume, RSI, Bollinger squeeze). Click <b>Scores</b> tab for component breakdowns.</div>';
-  h+='<div class="grid g5">'+met('Total Scans',s.total_scans||0)+met('Tickers',s.unique_tickers_tracked||0)+met('Records',(s.total_score_records||0).toLocaleString())+met('Prices',(s.total_price_snapshots||0).toLocaleString())+met('Last Scan',s.last_scan?new Date(s.last_scan).toLocaleDateString():'—')+'</div>';
-  h+='<div class="grid g2" style="margin-top:16px"><div class="card"><div class="sec-title">📈 Long-Term Scores</div><div class="sec-sub">Top 10 · Revenue + margins + valuation + FCF</div>';
-  for(var i=0;i<lt.length;i++){var r=lt[i];h+='<div class="row"><span class="dim" style="font-size:11px">'+(i+1)+'</span><span class="row-tk">'+r.ticker+'</span>'+bar(r.lt_score)+'<span class="dim" style="font-size:12px;text-align:right">$'+r.price+'</span></div>'}
-  h+='</div><div class="card"><div class="sec-title">⚡ Options Scores</div><div class="sec-sub">Top 10 · Earnings + IV + volume + momentum</div>';
-  for(var i=0;i<opt.length;i++){var r=opt[i];h+='<div class="row"><span class="dim" style="font-size:11px">'+(i+1)+'</span><span class="row-tk">'+r.ticker+'</span>'+bar(r.opt_score)+'<span class="dim" style="font-size:12px;text-align:right">RSI '+(r.rsi||'—')+'</span></div>'}
-  h+='</div></div>';
-  h+='<div class="card"><div class="sec-title">🧠 Intelligence Layers</div><div class="sec-sub">Additional signals that augment scores when enabled</div><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">';
-  h+='<div style="padding:14px;background:#0a0e17;border-radius:8px;border:1px solid #1a2235"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span>📋</span><span style="font-size:13px;font-weight:700">SEC Filings</span><span class="layer layer-off" style="margin-left:auto">STUB</span></div><div style="font-size:11px;color:#64748b;line-height:1.4">8-K filings, insider trading from EDGAR</div></div>';
-  h+='<div style="padding:14px;background:#0a0e17;border-radius:8px;border:1px solid #1a2235"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span>💬</span><span style="font-size:13px;font-weight:700">Sentiment</span><span class="layer layer-off" style="margin-left:auto">PLANNED</span></div><div style="font-size:11px;color:#64748b;line-height:1.4">StockTwits + Reddit chatter analysis</div></div>';
-  h+='<div style="padding:14px;background:#0a0e17;border-radius:8px;border:1px solid #1a2235"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span>🐋</span><span style="font-size:13px;font-weight:700">Whale Flow</span><span class="layer layer-off" style="margin-left:auto">PLANNED</span></div><div style="font-size:11px;color:#64748b;line-height:1.4">Unusual options activity / block trades</div></div>';
-  h+='</div></div>';
-  if(rsi.length>0){h+='<div class="card"><div class="sec-title">RSI Heatmap</div><div class="sec-sub">Green (&lt;30) = oversold · Red (&gt;70) = overbought</div><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:flex-end;height:130px">';for(var i=0;i<rsi.length;i++){var r=rsi[i];var c=r.rsi<30?'#00e5a0':r.rsi>70?'#ff3b5c':'#ffb020';h+='<div style="flex:1;min-width:18px;display:flex;flex-direction:column;justify-content:flex-end;height:100%;text-align:center" title="'+r.ticker+': RSI '+r.rsi+'"><div style="height:'+Math.max(r.rsi*1.2,4)+'px;background:'+c+';opacity:.7;border-radius:3px 3px 0 0;margin:0 1px"></div><div style="font-size:7px;color:#64748b;margin-top:2px" class="mono">'+r.ticker+'</div></div>'}h+='</div></div>';}
-  qs('#ct').innerHTML=h;
-}
-
-function rScores(){
-  var res=(D.latest&&D.latest.results)?D.latest.results:[];
-  var det='<div class="card" style="padding:40px;text-align:center"><div style="font-size:36px;margin-bottom:12px">◆</div><div style="font-size:14px;font-weight:600;margin-bottom:8px">Score Explorer</div><div class="dim" style="font-size:12px;max-width:400px;margin:0 auto;line-height:1.6">Select a ticker to see score history, component breakdown, and intelligence layer status.</div></div>';
-  if(selTk){
-    var latest=null;for(var i=0;i<res.length;i++){if(res[i].ticker===selTk){latest=res[i];break}}
-    if(tkH&&tkH.history&&tkH.history.length>0){
-      var hist=tkH.history,L=hist[hist.length-1],first=hist[0],ch=L.lt_score-first.lt_score;
-      det='<div class="card"><div class="sec-title">'+selTk+'</div><div class="sec-sub">'+tkH.data_points+' data points</div>';
-      det+='<div class="grid g2" style="margin-top:12px">'+met('LT Score',L.lt_score,sc(L.lt_score),'Long-term quality')+met('Opt Score',L.opt_score,sc(L.opt_score,40,25),'Options opportunity')+met('LT Δ',(ch>=0?'+':'')+ch,ch>=0?'#00e5a0':'#ff3b5c','Over period')+met('Price','$'+L.price)+'</div>';
-      if(latest){det+=layerPills(latest);det+='<div class="grid g2" style="margin-top:16px"><div style="padding:12px;background:#0a0e17;border-radius:8px;border:1px solid #1a2235"><div style="font-size:12px;font-weight:700;margin-bottom:8px;color:#00e5a0">📈 LT Components</div>'+rBD(ltBreakdown(latest))+'</div><div style="padding:12px;background:#0a0e17;border-radius:8px;border:1px solid #1a2235"><div style="font-size:12px;font-weight:700;margin-bottom:8px;color:#3b82f6">⚡ Opt Components</div>'+rBD(optBreakdown(latest))+'</div></div>';}
-      det+='<div style="margin-top:16px"><div style="font-size:13px;font-weight:700;margin-bottom:8px">Score Trend</div>';
-      var step=Math.max(1,Math.floor(hist.length/20));
-      for(var i=0;i<hist.length;i+=step){var p=hist[i];var d=new Date(p.timestamp).toLocaleDateString('en-US',{month:'short',day:'numeric'});det+='<div style="display:grid;grid-template-columns:55px 1fr 1fr 36px 36px;align-items:center;gap:4px;padding:2px 0"><span class="dim" style="font-size:9px">'+d+'</span><div style="height:4px;background:#1a2235;border-radius:2px;overflow:hidden"><div style="width:'+Math.min(100,p.lt_score)+'%;height:100%;background:#00e5a0"></div></div><div style="height:4px;background:#1a2235;border-radius:2px;overflow:hidden"><div style="width:'+Math.min(100,p.opt_score)+'%;height:100%;background:#3b82f6"></div></div><span class="mono" style="font-size:9px;color:#00e5a0">'+p.lt_score+'</span><span class="mono" style="font-size:9px;color:#3b82f6">'+p.opt_score+'</span></div>'}
-      det+='<div style="display:flex;gap:12px;margin-top:6px"><span style="font-size:10px;color:#00e5a0">■ LT</span><span style="font-size:10px;color:#3b82f6">■ Opt</span></div></div></div>';
-    }else if(!tkH){det='<div class="card" style="padding:40px;text-align:center"><div class="dim pulse">Loading '+selTk+'...</div></div>';}
-  }
-  var list='';for(var i=0;i<res.length;i++){var r=res[i];list+='<div class="tkr '+(selTk===r.ticker?'sel':'')+'" onclick="pickTk(\''+r.ticker+'\')"><span class="row-tk">'+r.ticker+'</span><span class="dim" style="font-size:11px">$'+r.price+'</span><span class="badge" style="background:'+sc(r.lt_score)+'18;color:'+sc(r.lt_score)+';border:1px solid '+sc(r.lt_score)+'30">'+r.lt_score+'</span><span class="badge" style="background:'+sc(r.opt_score,40,25)+'18;color:'+sc(r.opt_score,40,25)+';border:1px solid '+sc(r.opt_score,40,25)+'30">'+r.opt_score+'</span></div>'}
-  qs('#ct').innerHTML='<div style="display:flex;gap:16px;min-height:60vh"><div class="card ticker-list" style="padding:12px"><div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:4px 8px;margin-bottom:4px">'+res.length+' tickers</div><div style="font-size:10px;color:#475569;padding:0 8px 8px">Click for breakdown</div>'+list+'</div><div style="flex:1">'+det+'</div></div>';
-}
-function pickTk(t){selTk=t;tkH=null;rScores();F('/scores/'+t+'?days=180').then(function(d){tkH=d;rScores()})}
-
-function rPlays(){
-  var res=(D.latest&&D.latest.results)?D.latest.results:[],opt=res.slice().sort(function(a,b){return b.opt_score-a.opt_score}),list='';
-  for(var i=0;i<opt.length;i++){var r=opt[i];list+='<div class="tkr '+(playsTk===r.ticker?'sel':'')+'" onclick="loadPlays(\''+r.ticker+'\')"><span class="row-tk">'+r.ticker+'</span><span class="dim" style="font-size:11px">$'+r.price+'</span><span class="badge" style="background:'+sc(r.opt_score,40,25)+'18;color:'+sc(r.opt_score,40,25)+';border:1px solid '+sc(r.opt_score,40,25)+'30">'+r.opt_score+'</span></div>'}
-  var det='';
-  if(!playsTk){
-    det='<div class="card" style="padding:40px;text-align:center"><div style="font-size:36px;margin-bottom:12px">⚡</div><div style="font-size:14px;font-weight:600;margin-bottom:8px">Options Play Builder</div><div class="dim" style="font-size:12px;max-width:440px;margin:0 auto;line-height:1.6">Select a ticker to fetch its live options chain and generate strategy recommendations with specific strikes, expiries, and risk/reward.</div></div><div class="tip"><span class="tip-icon">?</span> <b>Strategies generated:</b> Long calls/puts (directional), straddles &amp; strangles (earnings/volatility), bull/bear vertical spreads (defined risk), and credit spreads (sell premium). Takes 10–20s per ticker. Higher Opt Score = more catalysts.</div>';
-  }else if(!playsData){
-    det='<div class="card" style="padding:40px;text-align:center"><div style="font-size:24px;margin-bottom:12px" class="pulse">⟳</div><div style="font-size:14px;color:#94a3b8;margin-bottom:8px">Generating plays for '+playsTk+'</div><div id="plays-msg" style="font-size:12px;color:#475569">'+(playsMsg||'Starting...')+'</div><div style="margin-top:12px;font-size:10px;color:#475569">Fetching live options chain — typically 10–20s</div></div>';
-  }else if(playsData.error&&(!playsData.plays||playsData.plays.length===0)){
-    det='<div class="card" style="padding:24px"><div class="sec-title">'+playsTk+'</div>';
-    if(playsData.price)det+='<div class="mono" style="font-size:20px;font-weight:800;margin:8px 0">$'+playsData.price+'</div>';
-    det+='<div style="margin-top:12px;padding:16px;background:#1a0a0a;border:1px solid #ff3b5c30;border-radius:8px"><span style="color:#ff3b5c;font-size:13px">⚠ '+playsData.error+'</span></div></div>';
-  }else{
-    var p=playsData;
-    det='<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px"><div><div class="sec-title">'+p.ticker+' Play Builder</div><div class="sec-sub">'+p.play_count+' play'+(p.play_count!==1?'s':'')+' · '+new Date(p.timestamp).toLocaleTimeString()+'</div></div><div style="text-align:right"><div class="mono" style="font-size:24px;font-weight:800">$'+p.price+'</div></div></div>';
-    det+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(100px,1fr));margin-top:12px">';
-    det+=met('RSI',p.rsi!=null?p.rsi:'—',p.rsi!=null?(p.rsi<30?'#00e5a0':p.rsi>70?'#ff3b5c':'#ffb020'):'#64748b',p.rsi!=null?(p.rsi<30?'Oversold':p.rsi>70?'Overbought':'Neutral'):'');
-    det+=met('IV',p.iv_30d!=null?p.iv_30d+'%':'—',p.iv_30d!=null?(p.iv_30d>50?'#ff3b5c':p.iv_30d>30?'#ffb020':'#00e5a0'):'#64748b',p.iv_30d!=null?(p.iv_30d>50?'Expensive':''):'');
-    det+=met('Earnings',p.days_to_earnings!=null?p.days_to_earnings+'d':'—',p.days_to_earnings!=null&&p.days_to_earnings<=14?'#00e5a0':'#64748b');
-    det+=met('Beta',p.beta!=null?p.beta:'—','#e2e8f0');
-    det+=met('Vol',p.vol_ratio!=null?p.vol_ratio+'x':'—',p.vol_ratio!=null&&p.vol_ratio>2?'#00e5a0':'#64748b');
-    det+='</div></div>';
-    if(p.plays&&p.plays.length>0){for(var i=0;i<p.plays.length;i++){var pl=p.plays[i];var dC=pl.direction.indexOf('Bullish')>=0?'#00e5a0':pl.direction.indexOf('Bearish')>=0?'#ff3b5c':'#3b82f6';
-      det+='<div class="card" style="border-left:3px solid '+dC+'"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><div><span style="font-size:15px;font-weight:800;color:'+dC+'">'+pl.emoji+' '+pl.strategy+'</span><span class="badge" style="margin-left:8px;background:'+dC+'18;color:'+dC+';border:1px solid '+dC+'30;font-size:10px">'+pl.direction+'</span></div><div style="text-align:right"><div class="mono" style="font-size:14px;font-weight:700">'+pl.action+'</div><div class="dim" style="font-size:11px">Exp: '+pl.expiry+' ('+pl.dte+'d)</div></div></div>';
-      det+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:8px">';
-      var mc=function(lb,vl,cl){return'<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">'+lb+'</div><div class="mono" style="font-size:14px;font-weight:700;color:'+(cl||'#e2e8f0')+'">'+vl+'</div></div>'};
-      det+=mc('Entry','$'+pl.entry_price)+mc('Breakeven',''+pl.breakeven)+mc('Max Loss','$'+Number(pl.max_loss).toLocaleString(),'#ff3b5c')+mc('Max Gain',''+pl.max_gain,'#00e5a0');
-      if(pl.bid!=null)det+=mc('Bid/Ask','$'+pl.bid+' / $'+pl.ask);
-      det+=mc('IV',pl.iv+'%','#ffb020')+mc('Volume',Number(pl.volume).toLocaleString())+mc('Open Int',Number(pl.open_interest).toLocaleString());
-      det+='</div><div style="margin-top:10px;padding:10px;background:#0a0e1780;border-radius:6px;border:1px solid #1a2235"><div style="font-size:10px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Rationale</div><div style="font-size:11px;color:#94a3b8;line-height:1.5">'+pl.rationale+'</div></div><div style="margin-top:6px;padding:8px 10px;background:#1a0a0a40;border-radius:6px;border:1px solid #ff3b5c15"><div style="font-size:10px;color:#ff3b5c80">⚠ '+pl.risk_notes+'</div></div></div>';
-    }}else{det+='<div class="card" style="padding:24px;text-align:center"><div class="dim" style="line-height:1.6">No plays generated — no upcoming earnings, low IV, or no directional bias. Try a higher Opt Score ticker.</div></div>';}
-  }
-  qs('#ct').innerHTML='<div style="display:flex;gap:16px;min-height:60vh"><div class="card ticker-list" style="padding:12px"><div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:4px 8px;margin-bottom:4px">By Options Score</div><div style="font-size:10px;color:#475569;padding:0 8px 8px">Click to generate</div>'+list+'</div><div style="flex:1">'+det+'</div></div>';
+  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:24}},
+    React.createElement(Tip,null,React.createElement("b",null,"How scores work:"),` CyberScreener scans ${res.length} cybersecurity stocks every 2h. `,React.createElement("b",null,"LT Score")," = long-term quality (revenue growth, margins, valuation, FCF, discount from highs). ",React.createElement("b",null,"Opt Score")," = options opportunity (earnings timing, IV, volume, RSI, Bollinger squeeze). Click ",React.createElement("b",null,"Scores")," tab for component breakdowns."),
+    // Metrics
+    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}},
+      React.createElement(Metric,{label:"Total Scans",value:stats.total_scans}),
+      React.createElement(Metric,{label:"Tickers",value:stats.unique_tickers_tracked}),
+      React.createElement(Metric,{label:"Records",value:(stats.total_score_records||0).toLocaleString()}),
+      React.createElement(Metric,{label:"Prices",value:(stats.total_price_snapshots||0).toLocaleString()}),
+      React.createElement(Metric,{label:"Last Scan",value:stats.last_scan?new Date(stats.last_scan).toLocaleDateString():"—"})
+    ),
+    // Two columns: LT + Opt
+    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}},
+      React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
+        React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"📈 Long-Term Scores"),
+        React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Top 10 · Revenue + margins + valuation + FCF"),
+        topLT.map((r,i)=>React.createElement("div",{key:r.ticker,style:{display:"grid",gridTemplateColumns:"20px 60px 1fr 70px",alignItems:"center",gap:8,padding:"4px 0"}},React.createElement("span",{style:{fontSize:11,color:C.textDim}},i+1),React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement(ScoreBar,{score:r.lt_score}),React.createElement("span",{style:{fontSize:12,color:C.textDim,textAlign:"right"}},"$"+r.price)))
+      ),
+      React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
+        React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"⚡ Options Scores"),
+        React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Top 10 · Earnings + IV + volume + momentum"),
+        topOpt.map((r,i)=>React.createElement("div",{key:r.ticker,style:{display:"grid",gridTemplateColumns:"20px 60px 1fr 70px",alignItems:"center",gap:8,padding:"4px 0"}},React.createElement("span",{style:{fontSize:11,color:C.textDim}},i+1),React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement(ScoreBar,{score:r.opt_score}),React.createElement("span",{style:{fontSize:12,color:C.textDim,textAlign:"right"}},"RSI "+(r.rsi||"—"))))
+      )
+    ),
+    // Intelligence layers
+    React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
+      React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"🧠 Intelligence Layers"),
+      React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Additional signals that augment scores when enabled"),
+      React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}},
+        [{icon:"📋",name:"SEC Filings",status:"STUB",desc:"8-K filings, insider trading from EDGAR"},{icon:"💬",name:"Sentiment",status:"PLANNED",desc:"StockTwits + Reddit chatter analysis"},{icon:"🐋",name:"Whale Flow",status:"PLANNED",desc:"Unusual options activity / block trades"}].map(l=>React.createElement("div",{key:l.name,style:{padding:14,background:C.bg,borderRadius:8,border:"1px solid "+C.border}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:6}},React.createElement("span",null,l.icon),React.createElement("span",{style:{fontSize:13,fontWeight:700}},l.name),React.createElement("span",{style:{marginLeft:"auto",fontSize:10,fontWeight:600,fontFamily:mono,padding:"2px 6px",borderRadius:4,background:"#1a2235",color:"#475569",border:"1px solid #1a223580"}},l.status)),React.createElement("div",{style:{fontSize:11,color:C.textDim,lineHeight:1.4}},l.desc)))
+      )
+    ),
+    // RSI Heatmap (Recharts)
+    rsiData.length>0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
+      React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"RSI Heatmap"),
+      React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Green (<30) = oversold · Red (>70) = overbought"),
+      React.createElement(ResponsiveContainer,{width:"100%",height:220},
+        React.createElement(BarChart,{data:rsiData,margin:{top:4,right:8,bottom:4,left:8}},
+          React.createElement(XAxis,{dataKey:"ticker",tick:{fill:C.textDim,fontSize:9},interval:0,angle:-45,textAnchor:"end",height:50}),
+          React.createElement(YAxis,{domain:[0,100],tick:{fill:C.textDim,fontSize:10}}),
+          React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
+          React.createElement(Bar,{dataKey:"rsi",radius:[3,3,0,0]},...rsiData.map((r,i)=>React.createElement(Cell,{key:i,fill:r.rsi<30?C.green:r.rsi>70?C.red:C.amber,fillOpacity:0.8})))
+        )
+      )
+    )
+  );
 }
 
-function loadPlays(t){
-  if(playsPoller){clearInterval(playsPoller);playsPoller=null}
-  playsTk=t;playsData=null;playsMsg='Starting...';rPlays();
-  F('/plays/'+t+'/generate',{method:'POST'}).then(function(d){
-    if(!d){playsData={ticker:t,plays:[],error:'Could not reach API'};rPlays();return}
-    if(d.status==='cached'){playsData=d.result;rPlays();return}
-    playsMsg=d.message||'Working...';var el=document.getElementById('plays-msg');if(el)el.textContent=playsMsg;
-    playsPoller=setInterval(function(){
-      F('/plays/'+t+'/status').then(function(s){
-        if(!s||playsTk!==t){clearInterval(playsPoller);playsPoller=null;return}
-        if(s.status==='done'){clearInterval(playsPoller);playsPoller=null;playsData=s.result||{ticker:t,plays:[],error:'No data'};rPlays();}
-        else if(s.status==='running'){playsMsg=s.message||'Working...';var el=document.getElementById('plays-msg');if(el)el.textContent=playsMsg;}
-      })
+// ─── Scores Tab (with Recharts charts restored) ───
+function ScoresTab({latest}){
+  const [sel,setSel]=useState(null);
+  const [hist,setHist]=useState(null);
+  const results=latest?.results||[];
+
+  const load=useCallback(async(t)=>{setSel(t);setHist(null);const d=await api("/scores/"+t+"?days=180");if(d)setHist(d)},[]);
+
+  const latestRow=sel?results.find(r=>r.ticker===sel):null;
+
+  return React.createElement("div",{style:{display:"flex",gap:16,minHeight:"60vh"}},
+    // Ticker list
+    React.createElement("div",{style:{width:320,flexShrink:0,background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:12,maxHeight:"70vh",overflowY:"auto"}},
+      React.createElement("div",{style:{fontSize:11,color:C.textDim,textTransform:"uppercase",letterSpacing:1,padding:"4px 8px",marginBottom:4}},results.length+" tickers"),
+      React.createElement("div",{style:{fontSize:10,color:"#475569",padding:"0 8px 8px"}},"Click for breakdown"),
+      results.map(r=>React.createElement("div",{key:r.ticker,onClick:()=>load(r.ticker),style:{display:"grid",gridTemplateColumns:"54px 1fr 44px 44px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:6,cursor:"pointer",background:sel===r.ticker?C.green+"10":"transparent",borderLeft:sel===r.ticker?"3px solid "+C.green:"3px solid transparent"}},
+        React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),
+        React.createElement("span",{style:{fontSize:11,color:C.textDim}},"$"+r.price),
+        React.createElement(Badge,{color:r.lt_score>=50?C.green:r.lt_score>=30?C.amber:C.textDim},r.lt_score),
+        React.createElement(Badge,{color:r.opt_score>=40?C.green:r.opt_score>=25?C.amber:C.textDim},r.opt_score)
+      ))
+    ),
+    // Detail
+    React.createElement("div",{style:{flex:1}},
+      !sel?React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"◆"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:8}},"Score Explorer"),React.createElement("div",{style:{fontSize:12,color:C.textDim,maxWidth:400,margin:"0 auto",lineHeight:1.6}},"Select a ticker to see score history, component breakdown, and intelligence layer status."))
+      :!hist?.history?.length?React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{className:"pulse",style:{fontSize:14,color:C.textDim}},"Loading "+sel+"..."))
+      :React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
+        // Metrics
+        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12}},
+          React.createElement(Metric,{label:"LT Score",value:hist.history[hist.history.length-1].lt_score,color:hist.history[hist.history.length-1].lt_score>=60?C.green:hist.history[hist.history.length-1].lt_score>=35?C.amber:C.red,sub:"Long-term quality"}),
+          React.createElement(Metric,{label:"Opt Score",value:hist.history[hist.history.length-1].opt_score,color:hist.history[hist.history.length-1].opt_score>=40?C.green:hist.history[hist.history.length-1].opt_score>=25?C.amber:C.red,sub:"Options opportunity"}),
+          React.createElement(Metric,{label:"LT Δ",value:(hist.history[hist.history.length-1].lt_score-hist.history[0].lt_score>=0?"+":"")+(hist.history[hist.history.length-1].lt_score-hist.history[0].lt_score),color:hist.history[hist.history.length-1].lt_score>=hist.history[0].lt_score?C.green:C.red}),
+          React.createElement(Metric,{label:"Price",value:"$"+hist.history[hist.history.length-1].price})
+        ),
+        // Layer pills
+        latestRow&&React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
+          React.createElement(LayerPill,{name:"SEC",icon:"📋",score:latestRow.sec_score}),
+          React.createElement(LayerPill,{name:"Sent",icon:"💬",score:latestRow.sentiment_score}),
+          React.createElement(LayerPill,{name:"Whale",icon:"🐋",score:latestRow.whale_score})
+        ),
+        // Component breakdowns side by side
+        latestRow&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+          React.createElement(Breakdown,{items:ltBreakdown(latestRow),accent:C.green}),
+          React.createElement(Breakdown,{items:optBreakdown(latestRow),accent:C.blue})
+        ),
+        // Score history chart (Recharts AreaChart restored)
+        React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
+          React.createElement("h2",{style:{fontSize:16,fontWeight:800,marginBottom:4}},sel+" — Score History"),
+          React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},hist.data_points+" data points"),
+          React.createElement(ResponsiveContainer,{width:"100%",height:280},
+            React.createElement(AreaChart,{data:hist.history.map(h=>({...h,date:new Date(h.timestamp).toLocaleDateString("en-US",{month:"short",day:"numeric"})})),margin:{top:8,right:16,bottom:4,left:0}},
+              React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:C.border}),
+              React.createElement(XAxis,{dataKey:"date",tick:{fill:C.textDim,fontSize:10}}),
+              React.createElement(YAxis,{tick:{fill:C.textDim,fontSize:10}}),
+              React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
+              React.createElement(Area,{type:"monotone",dataKey:"lt_score",name:"LT Score",stroke:C.green,fill:C.greenDim,strokeWidth:2}),
+              React.createElement(Area,{type:"monotone",dataKey:"opt_score",name:"Opt Score",stroke:C.blue,fill:C.blueDim,strokeWidth:2}),
+              React.createElement(Legend,{wrapperStyle:{fontSize:11}})
+            )
+          )
+        ),
+        // Price + RSI dual-axis chart (RESTORED)
+        React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
+          React.createElement("h2",{style:{fontSize:16,fontWeight:800,marginBottom:4}},"Price & RSI"),
+          React.createElement(ResponsiveContainer,{width:"100%",height:200},
+            React.createElement(LineChart,{data:hist.history.map(h=>({date:new Date(h.timestamp).toLocaleDateString("en-US",{month:"short",day:"numeric"}),price:h.price,rsi:h.rsi})),margin:{top:8,right:16,bottom:4,left:0}},
+              React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:C.border}),
+              React.createElement(XAxis,{dataKey:"date",tick:{fill:C.textDim,fontSize:10}}),
+              React.createElement(YAxis,{yAxisId:"price",tick:{fill:C.textDim,fontSize:10},tickFormatter:v=>"$"+v}),
+              React.createElement(YAxis,{yAxisId:"rsi",orientation:"right",domain:[0,100],tick:{fill:C.textDim,fontSize:10}}),
+              React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
+              React.createElement(Line,{yAxisId:"price",type:"monotone",dataKey:"price",name:"Price",stroke:C.green,strokeWidth:2,dot:false}),
+              React.createElement(Line,{yAxisId:"rsi",type:"monotone",dataKey:"rsi",name:"RSI",stroke:C.amber,strokeWidth:1,dot:false,strokeDasharray:"4 4"}),
+              React.createElement(Legend,{wrapperStyle:{fontSize:11}})
+            )
+          )
+        )
+      )
+    )
+  );
+}
+
+// ─── Plays Tab (async loading with polling) ───
+function PlaysTab({latest}){
+  const [sel,setSel]=useState(null);
+  const [data,setData]=useState(null);
+  const [msg,setMsg]=useState("");
+  const poller=useRef(null);
+  const timer=useRef(null);
+  const results=latest?.results||[];
+  const opts=[...results].sort((a,b)=>b.opt_score-a.opt_score);
+
+  function cleanup(){if(poller.current){clearInterval(poller.current);poller.current=null}if(timer.current){clearTimeout(timer.current);timer.current=null}}
+
+  async function loadPlays(t){
+    cleanup();setSel(t);setData(null);setMsg("Starting...");
+    const d=await api("/plays/"+t+"/generate",{method:"POST"});
+    if(!d){setData({ticker:t,plays:[],error:"Could not reach API"});return}
+    if(d.status==="cached"){setData(d.result);return}
+    setMsg(d.message||"Working...");
+    poller.current=setInterval(async()=>{
+      const s=await api("/plays/"+t+"/status");
+      if(!s)return;
+      if(s.status==="done"){cleanup();setData(s.result||{ticker:t,plays:[],error:"No data"});}
+      else if(s.status==="running")setMsg(s.message||"Working...");
     },2000);
-  });
-  setTimeout(function(){if(playsPoller&&!playsData&&playsTk===t){clearInterval(playsPoller);playsPoller=null;playsData={ticker:t,plays:[],error:'Timed out after 45s — try again'};rPlays();}},45000);
+    timer.current=setTimeout(()=>{cleanup();setData(d=>d||{ticker:t,plays:[],error:"Timed out after 45s — try again"})},45000);
+  }
+
+  useEffect(()=>()=>cleanup(),[]);
+
+  function mc(lb,vl,cl){return React.createElement("div",{style:{padding:8,background:C.bg,borderRadius:6}},React.createElement("div",{style:{fontSize:9,color:C.textDim,textTransform:"uppercase",letterSpacing:.5}},lb),React.createElement("div",{style:{fontSize:14,fontWeight:700,fontFamily:mono,color:cl||C.text}},vl))}
+
+  let detail;
+  if(!sel){
+    detail=React.createElement("div",null,
+      React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center",marginBottom:12}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"⚡"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:8}},"Options Play Builder"),React.createElement("div",{style:{fontSize:12,color:C.textDim,maxWidth:440,margin:"0 auto",lineHeight:1.6}},"Select a ticker to fetch its live options chain and generate strategy recommendations.")),
+      React.createElement(Tip,null,React.createElement("b",null,"Strategies:")," Long calls/puts (directional), straddles & strangles (earnings), vertical spreads (defined risk), credit spreads (sell premium). Takes 10–20s. Higher Opt Score = more catalysts.")
+    );
+  }else if(!data){
+    detail=React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{className:"pulse",style:{fontSize:24,marginBottom:12}},"⟳"),React.createElement("div",{style:{fontSize:14,color:C.textMid,marginBottom:8}},"Generating plays for "+sel),React.createElement("div",{style:{fontSize:12,color:"#475569"}},msg),React.createElement("div",{style:{marginTop:12,fontSize:10,color:"#475569"}},"Fetching live options chain — typically 10–20s"));
+  }else if(data.error&&(!data.plays||data.plays.length===0)){
+    detail=React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:24}},React.createElement("h2",{style:{fontSize:18,fontWeight:800}},sel),data.price&&React.createElement("div",{style:{fontSize:20,fontWeight:800,fontFamily:mono,margin:"8px 0"}},"$"+data.price),React.createElement("div",{style:{marginTop:12,padding:16,background:C.redDim,border:"1px solid "+C.red+"30",borderRadius:8}},React.createElement("span",{style:{color:C.red,fontSize:13}},"⚠ "+data.error)));
+  }else{
+    const p=data;
+    detail=React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
+      React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}},React.createElement("div",null,React.createElement("h2",{style:{fontSize:18,fontWeight:800}},p.ticker+" Play Builder"),React.createElement("p",{style:{fontSize:12,color:C.textDim}},p.play_count+" play"+(p.play_count!==1?"s":"")+" · "+new Date(p.timestamp).toLocaleTimeString())),React.createElement("div",{style:{fontSize:24,fontWeight:800,fontFamily:mono}},"$"+p.price)),
+        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(100px,1fr))",gap:12,marginTop:12}},
+          React.createElement(Metric,{label:"RSI",value:p.rsi!=null?p.rsi:"—",color:p.rsi!=null?(p.rsi<30?C.green:p.rsi>70?C.red:C.amber):C.textDim,sub:p.rsi!=null?(p.rsi<30?"Oversold":p.rsi>70?"Overbought":"Neutral"):""}),
+          React.createElement(Metric,{label:"IV",value:p.iv_30d!=null?p.iv_30d+"%":"—",color:p.iv_30d!=null?(p.iv_30d>50?C.red:p.iv_30d>30?C.amber:C.green):C.textDim}),
+          React.createElement(Metric,{label:"Earnings",value:p.days_to_earnings!=null?p.days_to_earnings+"d":"—",color:p.days_to_earnings!=null&&p.days_to_earnings<=14?C.green:C.textDim}),
+          React.createElement(Metric,{label:"Beta",value:p.beta!=null?p.beta:"—"}),
+          React.createElement(Metric,{label:"Vol",value:p.vol_ratio!=null?p.vol_ratio+"x":"—",color:p.vol_ratio!=null&&p.vol_ratio>2?C.green:C.textDim})
+        )
+      ),
+      ...(p.plays&&p.plays.length>0?p.plays.map((pl,i)=>{
+        const dC=pl.direction.indexOf("Bullish")>=0?C.green:pl.direction.indexOf("Bearish")>=0?C.red:C.blue;
+        return React.createElement("div",{key:i,style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,borderLeft:"3px solid "+dC,padding:20}},
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},React.createElement("div",null,React.createElement("span",{style:{fontSize:15,fontWeight:800,color:dC}},pl.emoji+" "+pl.strategy),React.createElement(Badge,{color:dC},pl.direction)),React.createElement("div",{style:{textAlign:"right"}},React.createElement("div",{style:{fontSize:14,fontWeight:700,fontFamily:mono}},pl.action),React.createElement("div",{style:{fontSize:11,color:C.textDim}},"Exp: "+pl.expiry+" ("+pl.dte+"d)"))),
+          React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(115px,1fr))",gap:8}},mc("Entry","$"+pl.entry_price),mc("Breakeven",""+pl.breakeven),mc("Max Loss","$"+Number(pl.max_loss).toLocaleString(),C.red),mc("Max Gain",""+pl.max_gain,C.green),pl.bid!=null&&mc("Bid/Ask","$"+pl.bid+" / $"+pl.ask),mc("IV",pl.iv+"%",C.amber),mc("Volume",Number(pl.volume).toLocaleString()),mc("Open Int",Number(pl.open_interest).toLocaleString())),
+          React.createElement("div",{style:{marginTop:10,padding:10,background:C.bg+"80",borderRadius:6,border:"1px solid "+C.border}},React.createElement("div",{style:{fontSize:10,fontWeight:600,color:C.textDim,textTransform:"uppercase",letterSpacing:.5,marginBottom:3}},"Rationale"),React.createElement("div",{style:{fontSize:11,color:C.textMid,lineHeight:1.5}},pl.rationale)),
+          React.createElement("div",{style:{marginTop:6,padding:"8px 10px",background:C.redDim+"40",borderRadius:6,border:"1px solid "+C.red+"15"}},React.createElement("div",{style:{fontSize:10,color:C.red+"80"}},"⚠ "+pl.risk_notes))
+        )
+      }):[React.createElement("div",{key:"empty",style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:24,textAlign:"center"}},React.createElement("div",{style:{fontSize:12,color:C.textDim,lineHeight:1.6}},"No plays generated — no earnings catalyst, low IV, or no directional bias."))])
+    );
+  }
+
+  return React.createElement("div",{style:{display:"flex",gap:16,minHeight:"60vh"}},
+    React.createElement("div",{style:{width:320,flexShrink:0,background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:12,maxHeight:"70vh",overflowY:"auto"}},
+      React.createElement("div",{style:{fontSize:11,color:C.textDim,textTransform:"uppercase",letterSpacing:1,padding:"4px 8px",marginBottom:4}},"By Options Score"),
+      React.createElement("div",{style:{fontSize:10,color:"#475569",padding:"0 8px 8px"}},"Click to generate"),
+      opts.map(r=>React.createElement("div",{key:r.ticker,onClick:()=>loadPlays(r.ticker),style:{display:"grid",gridTemplateColumns:"54px 1fr 44px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:6,cursor:"pointer",background:sel===r.ticker?C.green+"10":"transparent",borderLeft:sel===r.ticker?"3px solid "+C.green:"3px solid transparent"}},
+        React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),
+        React.createElement("span",{style:{fontSize:11,color:C.textDim}},"$"+r.price),
+        React.createElement(Badge,{color:r.opt_score>=40?C.green:r.opt_score>=25?C.amber:C.textDim},r.opt_score)
+      ))
+    ),
+    React.createElement("div",{style:{flex:1}},detail)
+  );
 }
 
-function rBacktest(){
-  var d=D.backtest;
-  if(!d){qs('#ct').innerHTML='<div class="card" style="padding:40px;text-align:center"><div style="font-size:36px;margin-bottom:12px">📊</div><div style="font-size:14px;font-weight:600;margin-bottom:8px">Backtest</div><div class="dim" style="font-size:12px">Loading... Analyzing historical scores vs actual returns.</div></div>';return}
-  var sd=d.score_vs_returns||{},ld=d.layer_attribution||{};
-  var h='<div class="tip"><span class="tip-icon">?</span> <b>Backtest:</b> Scores grouped into quintiles (Q1=lowest, Q5=highest) and compared against actual forward returns. If the model works, Q5 should outperform Q1.</div>';
-  h+='<div style="display:flex;gap:8px;align-items:center;margin-bottom:20px"><span class="dim" style="font-size:12px">Forward:</span><button class="btn-p '+(btP===14?'on':'')+'" onclick="chgP(14)">14d</button><button class="btn-p '+(btP===30?'on':'')+'" onclick="chgP(30)">30d</button><button class="btn-p '+(btP===60?'on':'')+'" onclick="chgP(60)">60d</button><span class="dim" style="font-size:11px;margin-left:auto">'+(sd.total_observations||0)+' obs</span></div>';
-  if(sd.lt_correlation!=null){var c2=sd.lt_correlation,o=sd.opt_correlation;h+='<div class="grid g2">'+met('LT ↔ Return',c2!=null?c2.toFixed(3):'—',c2>0.1?'#00e5a0':c2<-0.05?'#ff3b5c':'#ffb020',c2>0.15?'Strong ✓':c2>0.05?'Weak':'None')+met('Opt ↔ Return',o!=null?o.toFixed(3):'—',o>0.1?'#00e5a0':o<-0.05?'#ff3b5c':'#ffb020')+'</div>'}
-  var ltQ=sd['Long-Term Score'];
-  if(ltQ&&!ltQ.error){var entries=Object.entries(ltQ);var mx=1;for(var i=0;i<entries.length;i++){var av=Math.abs(entries[i][1].avg_return||0);if(av>mx)mx=av}
-    h+='<div class="card" style="margin-top:16px"><div class="sec-title">Quintile → Return</div><div class="sec-sub">Higher quintile = higher score. Green = positive return.</div><div style="display:flex;gap:8px;align-items:flex-end;height:200px;padding-bottom:30px">';
-    for(var i=0;i<entries.length;i++){var l=entries[i][0],sv=entries[i][1];var ht=Math.abs(sv.avg_return||0)/mx*150;var c=(sv.avg_return||0)>=0?'#00e5a0':'#ff3b5c';h+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px"><span class="mono" style="font-size:11px;color:'+c+';font-weight:700">'+((sv.avg_return||0)>0?'+':'')+(sv.avg_return||0).toFixed(1)+'%</span><div style="width:80%;height:'+Math.max(ht,4)+'px;background:'+c+';opacity:.75;border-radius:4px"></div><span class="dim" style="font-size:9px">'+l+'</span><span class="dim" style="font-size:8px">n='+sv.count+'</span></div>'}h+='</div></div>';}
-  qs('#ct').innerHTML=h;
+// ─── Backtest Tab (FULLY RESTORED with Recharts) ───
+function BacktestTab({backtest:initialData}){
+  const [period,setPeriod]=useState(30);
+  const [data,setData]=useState(initialData);
+  const [loading,setLoading]=useState(false);
+
+  const loadBT=useCallback(async(fwd)=>{setLoading(true);const d=await api("/backtest?days=180&forward_period="+fwd);if(d)setData(d);setLoading(false)},[]);
+  useEffect(()=>{if(!data)loadBT(period)},[]);
+
+  if(loading)return React.createElement("div",{style:{color:C.textDim,padding:40,textAlign:"center"}},"Running backtest...");
+  if(!data)return React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:8}},"Backtest"),React.createElement("div",{style:{fontSize:12,color:C.textDim}},"Loading... Analyzing historical scores vs returns."));
+
+  const sd=data.score_vs_returns||{};
+  const ld=data.layer_attribution||{};
+  const ed=data.earnings_timing||{};
+
+  // Quintile data
+  const quintileChart=[];
+  const ltQ=sd["Long-Term Score"];
+  if(ltQ&&!ltQ.error){Object.entries(ltQ).forEach(([label,s])=>{quintileChart.push({name:label,return:s.avg_return,winRate:s.win_rate,count:s.count})})}
+
+  // Layer alpha data
+  const layerChart=[];
+  [["sec_filings","SEC Filings"],["insider_buying","Insider Buying"],["sentiment","Sentiment"],["whale_flow","Whale Flow"]].forEach(([k,l])=>{const v=ld[k];if(v&&v.alpha!=null)layerChart.push({name:l,alpha:v.alpha})});
+
+  // Earnings timing data
+  const earningsChart=[];
+  if(ed.timing_buckets){Object.entries(ed.timing_buckets).forEach(([l,s])=>{if(s.count>0)earningsChart.push({name:l,return14d:s.avg_return_14d,return30d:s.avg_return_30d,winRate:s.win_rate_14d,count:s.count})})}
+
+  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:24}},
+    React.createElement(Tip,null,React.createElement("b",null,"Backtest:")," Scores grouped into quintiles (Q1=lowest, Q5=highest) and compared against actual forward returns. If the model works, Q5 should outperform Q1."),
+    // Period selector
+    React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+      React.createElement("span",{style:{fontSize:12,color:C.textDim}},"Forward period:"),
+      ...[14,30,60].map(p=>React.createElement("button",{key:p,onClick:()=>{setPeriod(p);loadBT(p)},style:{padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:mono,background:period===p?C.green+"15":C.bgCard,border:"1px solid "+(period===p?C.green+"40":C.border),color:period===p?C.green:C.textDim}},p+"d")),
+      React.createElement("span",{style:{fontSize:11,color:C.textDim,marginLeft:"auto"}},(sd.total_observations||0)+" observations")
+    ),
+    // Correlations
+    sd.lt_correlation!=null&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
+      React.createElement(Metric,{label:"LT Score ↔ Return",value:sd.lt_correlation?.toFixed(3)||"—",color:sd.lt_correlation>0.1?C.green:sd.lt_correlation<-0.05?C.red:C.amber,sub:sd.lt_correlation>0.15?"Strong signal ✓":sd.lt_correlation>0.05?"Weak signal":"No signal yet"}),
+      React.createElement(Metric,{label:"Opt Score ↔ Return",value:sd.opt_correlation?.toFixed(3)||"—",color:sd.opt_correlation>0.1?C.green:sd.opt_correlation<-0.05?C.red:C.amber})
+    ),
+    // Quintile chart (Recharts BarChart RESTORED)
+    quintileChart.length>0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
+      React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"Score Quintile → Avg Return"),
+      React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Does scoring predict "+period+"-day returns?"),
+      React.createElement(ResponsiveContainer,{width:"100%",height:260},
+        React.createElement(BarChart,{data:quintileChart,margin:{top:8,right:16,bottom:4,left:0}},
+          React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:C.border}),
+          React.createElement(XAxis,{dataKey:"name",tick:{fill:C.textDim,fontSize:10}}),
+          React.createElement(YAxis,{tick:{fill:C.textDim,fontSize:10},tickFormatter:v=>v+"%"}),
+          React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
+          React.createElement(Bar,{dataKey:"return",radius:[4,4,0,0]},...quintileChart.map((d,i)=>React.createElement(Cell,{key:i,fill:d.return>=0?C.green:C.red,fillOpacity:0.75})))
+        )
+      ),
+      React.createElement("div",{style:{display:"flex",gap:16,marginTop:8}},...quintileChart.map(d=>React.createElement("div",{key:d.name,style:{fontSize:10,color:C.textDim,textAlign:"center",flex:1}},"n="+d.count+" | "+(d.winRate||0).toFixed(0)+"%w")))
+    ),
+    // Layer alpha chart (Recharts horizontal BarChart RESTORED)
+    layerChart.length>0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
+      React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"Intelligence Layer Alpha"),
+      React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Return difference: bullish signal vs bearish/absent"),
+      React.createElement(ResponsiveContainer,{width:"100%",height:200},
+        React.createElement(BarChart,{data:layerChart,layout:"vertical",margin:{top:4,right:16,bottom:4,left:80}},
+          React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:C.border}),
+          React.createElement(XAxis,{type:"number",tick:{fill:C.textDim,fontSize:10},tickFormatter:v=>(v>0?"+":"")+v+"%"}),
+          React.createElement(YAxis,{type:"category",dataKey:"name",tick:{fill:C.textMid,fontSize:12},width:80}),
+          React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
+          React.createElement(Bar,{dataKey:"alpha",radius:[0,4,4,0]},...layerChart.map((d,i)=>React.createElement(Cell,{key:i,fill:d.alpha>=0?C.green:C.red,fillOpacity:0.8})))
+        )
+      )
+    ),
+    // Earnings timing chart (RESTORED — grouped bars 14d vs 30d)
+    earningsChart.length>0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
+      React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"Earnings Entry Timing"),
+      React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Best entry: "+(ed.best_entry_window||"—")),
+      React.createElement(ResponsiveContainer,{width:"100%",height:220},
+        React.createElement(BarChart,{data:earningsChart,margin:{top:8,right:16,bottom:4,left:0}},
+          React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:C.border}),
+          React.createElement(XAxis,{dataKey:"name",tick:{fill:C.textDim,fontSize:10}}),
+          React.createElement(YAxis,{tick:{fill:C.textDim,fontSize:10},tickFormatter:v=>v+"%"}),
+          React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
+          React.createElement(Bar,{dataKey:"return14d",name:"14d Return",fill:C.blue,fillOpacity:0.7,radius:[4,4,0,0]}),
+          React.createElement(Bar,{dataKey:"return30d",name:"30d Return",fill:C.purple,fillOpacity:0.7,radius:[4,4,0,0]}),
+          React.createElement(Legend,{wrapperStyle:{fontSize:11,color:C.textDim}})
+        )
+      )
+    ),
+    // Fallback
+    quintileChart.length===0&&layerChart.length===0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:6}},"Backtest needs more data"),React.createElement("div",{style:{fontSize:12,color:C.textDim}},"Run scans over multiple days to build historical score data for backtesting."))
+  );
 }
 
-function chgP(p){btP=p;qs('#ct').innerHTML='<div style="padding:40px;text-align:center;color:#64748b">Recalculating...</div>';F('/backtest?days=180&forward_period='+p).then(function(b){D.backtest=b;rBacktest()})}
-function doScan(){var b=qs('#sb');if(b){b.textContent='⟳ Scanning...';b.style.opacity='0.5'}fetch('/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});var p=setInterval(function(){F('/scan/status').then(function(s){if(s&&!s.running){clearInterval(p);if(b){b.textContent='✓ Done';b.style.opacity='1'}F('/stats').then(function(st){D.stats=st;F('/scores/latest?limit=50').then(function(la){D.latest=la;render()})})}})},3000);}
+// ─── Main App ───
+function App(){
+  const [tab,setTab]=useState("overview");
+  const [stats,setStats]=useState(null);
+  const [latest,setLatest]=useState(null);
+  const [backtest,setBacktest]=useState(null);
+  const [scanStatus,setScanStatus]=useState(null);
+  const [online,setOnline]=useState(null);
 
-F('/stats').then(function(s){D.stats=s;return F('/scores/latest?limit=50')}).then(function(l){D.latest=l;render();F('/backtest?days=180&forward_period=30').then(function(b){D.backtest=b;if(currentTab==='backtest')rBacktest()})});
+  useEffect(()=>{(async()=>{
+    const s=await api("/stats");
+    if(s){setStats(s);setOnline(true)}else{setOnline(false)}
+    const l=await api("/scores/latest?limit=50");
+    if(l)setLatest(l);
+    // Load backtest async — don't block
+    api("/backtest?days=180&forward_period=30").then(b=>{if(b)setBacktest(b)});
+  })()},[]);
+
+  const triggerScan=async()=>{
+    setScanStatus("running");
+    await fetch("/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+    const poll=setInterval(async()=>{
+      const s=await api("/scan/status");
+      if(s&&!s.running){clearInterval(poll);setScanStatus("done");
+        const ns=await api("/stats");if(ns)setStats(ns);
+        const nl=await api("/scores/latest?limit=50");if(nl)setLatest(nl);
+      }
+    },3000);
+  };
+
+  const TabBtn=({active,onClick,children,icon})=>React.createElement("button",{onClick,style:{padding:"10px 20px",background:active?C.green+"12":"transparent",border:"1px solid "+(active?C.green+"40":C.border),borderRadius:8,color:active?C.green:C.textDim,fontSize:13,fontWeight:active?700:500,cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6,fontFamily:mono}},icon&&React.createElement("span",{style:{fontSize:15}},icon),children);
+
+  return React.createElement("div",{style:{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'DM Sans',-apple-system,sans-serif"}},
+    // Header
+    React.createElement("header",{style:{padding:"16px 28px",borderBottom:"1px solid "+C.border,display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(180deg,"+C.bgCard+","+C.bg+")"}},
+      React.createElement("div",{style:{display:"flex",alignItems:"center",gap:12}},
+        React.createElement("span",{style:{fontSize:22}},"🛡️"),
+        React.createElement("div",null,React.createElement("h1",{style:{fontSize:18,fontWeight:800,margin:0,letterSpacing:-.5,color:C.green}},"CyberScreener"),React.createElement("span",{style:{fontSize:10,color:C.textDim,letterSpacing:2,textTransform:"uppercase"}},"Cybersecurity Investment Intelligence"))
+      ),
+      React.createElement("div",{style:{display:"flex",alignItems:"center",gap:12}},
+        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},React.createElement("div",{style:{width:7,height:7,borderRadius:"50%",background:online===true?C.green:online===false?C.red:C.amber,boxShadow:online===true?"0 0 8px "+C.green+"60":"none"}}),React.createElement("span",{style:{fontSize:11,color:C.textDim}},online===true?"API Online":online===false?"API Offline":"Checking...")),
+        React.createElement("button",{onClick:triggerScan,disabled:scanStatus==="running",style:{padding:"8px 18px",borderRadius:6,border:"1px solid "+C.green+"40",background:scanStatus==="running"?C.bgCard:C.green+"15",color:scanStatus==="running"?C.textDim:C.green,fontSize:12,fontWeight:700,cursor:scanStatus==="running"?"wait":"pointer",fontFamily:mono}},scanStatus==="running"?"⟳ Scanning...":scanStatus==="done"?"✓ Complete":"▶ Run Scan")
+      )
+    ),
+    // Offline banner
+    online===false&&React.createElement("div",{style:{padding:"12px 28px",background:C.redDim,borderBottom:"1px solid "+C.red+"30",fontSize:12,color:C.red}},React.createElement("strong",null,"API not reachable. "),"Check that the server is running on Railway or locally."),
+    // Tabs
+    React.createElement("nav",{style:{padding:"12px 28px",display:"flex",gap:8,borderBottom:"1px solid "+C.border}},
+      React.createElement(TabBtn,{active:tab==="overview",onClick:()=>setTab("overview"),icon:"◉"},"Overview"),
+      React.createElement(TabBtn,{active:tab==="scores",onClick:()=>setTab("scores"),icon:"◆"},"Scores"),
+      React.createElement(TabBtn,{active:tab==="plays",onClick:()=>setTab("plays"),icon:"⚡"},"Plays"),
+      React.createElement(TabBtn,{active:tab==="backtest",onClick:()=>setTab("backtest"),icon:"◈"},"Backtest")
+    ),
+    // Content
+    React.createElement("main",{style:{padding:"24px 28px",maxWidth:1280,margin:"0 auto"}},
+      tab==="overview"&&React.createElement(OverviewTab,{stats,latest}),
+      tab==="scores"&&React.createElement(ScoresTab,{latest}),
+      tab==="plays"&&React.createElement(PlaysTab,{latest}),
+      tab==="backtest"&&React.createElement(BacktestTab,{backtest})
+    ),
+    // Footer
+    React.createElement("footer",{style:{padding:"16px 28px",borderTop:"1px solid "+C.border,textAlign:"center"}},React.createElement("span",{style:{fontSize:10,color:C.textDim}},"CyberScreener v2.0 — Not financial advice. Scores are algorithmic signals, not buy/sell recommendations."))
+  );
+}
+
+ReactDOM.render(React.createElement(App),document.getElementById("root"));
 </script>
 </body>
 </html>

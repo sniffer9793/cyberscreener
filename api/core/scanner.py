@@ -17,15 +17,16 @@ from datetime import datetime, timedelta
 CYBER_UNIVERSE = {
     "Platform Giants": ["CRWD", "PANW", "FTNT", "ZS", "CSCO"],
     "Identity & Access (IAM)": ["OKTA", "CYBR", "SAIL"],
-    "Cloud & Network Security": ["NET", "AKAM", "CHKP", "VRNS", "QLYS", "TENB", "RPD"],
-    "AI-Powered / Next-Gen": ["S", "DDOG", "MSFT", "GOOGL"],
-    "Endpoint Detection (EDR/XDR)": ["CRWD", "S", "AVGO", "GEN"],
+    "Cloud & Network Security": ["NET", "AKAM", "CHKP", "VRNS", "QLYS", "TENB", "RPD", "FFIV"],
+    "AI-Powered / Next-Gen": ["S", "DDOG", "MSFT", "GOOGL", "AVGO"],
+    "Endpoint Detection (EDR/XDR)": ["CRWD", "S", "GEN"],
     "Threat Intel / IR": ["OTEX", "RDWR"],
     "Enterprise GRC": ["QLYS", "TENB", "RPD", "IBM"],
     "Network Hardware / Firewall": ["FTNT", "CHKP", "NTCT", "ATEN"],
-    "Data Security": ["VRNS"],
+    "Data Security": ["VRNS", "VRNT"],
     "Gov / Defense Cyber": ["CACI", "LDOS", "SAIC", "BAH", "BBAI", "PLTR"],
-    "Mid/Small Cap Plays": ["SCWX", "TELOS", "OSPN", "JAMF", "DT", "ESTC", "ZI"],
+    "Mid/Small Cap Plays": ["TLS", "OSPN", "JAMF", "DT", "ESTC", "RBBN"],
+    "ETF Benchmarks": ["CIBR", "HACK", "BUG"],
 }
 
 ALL_TICKERS = sorted(list(set(t for tickers in CYBER_UNIVERSE.values() for t in tickers)))
