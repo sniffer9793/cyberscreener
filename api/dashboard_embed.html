@@ -28,6 +28,19 @@ window.onerror=function(m,s,l,c,e){document.getElementById('root').innerHTML='<d
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" onload="window._sl.push('react-dom')" onerror="document.getElementById('ldst').innerHTML='<span style=color:#ff3b5c>FAILED: ReactDOM CDN</span>'"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js" onload="window._sl.push('babel');document.getElementById('ldst').textContent='Babel ✓'" onerror="document.getElementById('ldst').innerHTML='<span style=color:#ff3b5c>FAILED: Babel CDN</span>'"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js" onload="window._sl.push('recharts');document.getElementById('ldst').textContent='All scripts loaded ✓'" onerror="document.getElementById('ldst').innerHTML='<span style=color:#ff3b5c>FAILED: Recharts CDN</span>'"></script>
+<script>
+// Recharts CDN shim - detect how it was exported
+if(typeof Recharts==='undefined'){
+  if(window.recharts)window.Recharts=window.recharts;
+  else if(window.Recharts===undefined){
+    // Try to find it on window
+    var _rk=Object.keys(window).filter(function(k){return k.toLowerCase().indexOf('rechart')>=0});
+    if(_rk.length>0)window.Recharts=window[_rk[0]];
+  }
+}
+if(typeof Recharts!=='undefined')document.getElementById('ldst').textContent='Recharts resolved ✓';
+else document.getElementById('ldst').textContent='Recharts global not found - keys: '+Object.keys(window).filter(function(k){return /chart/i.test(k)}).join(',');
+</script>
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef}=React;
 const {LineChart,Line,BarChart,Bar,XAxis,YAxis,Tooltip,ResponsiveContainer,CartesianGrid,Cell,Legend,Area,AreaChart}=Recharts;
