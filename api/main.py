@@ -660,3 +660,21 @@ def get_stats():
 
     conn.close()
     return stats
+
+@app.get("/debug/options/{ticker}")
+def debug_options(ticker: str):
+    """Test endpoint to isolate options chain fetch on Railway."""
+    import yfinance as yf
+    import time
+    result = {"ticker": ticker, "steps": []}
+    try:
+        t = yf.Ticker(ticker)
+        result["steps"].append("ticker_created")
+        dates = t.options
+        result["steps"].append(f"options_dates={list(dates)[:3] if dates else []}")
+        if dates:
+            chain = t.option_chain(dates[0])
+            result["steps"].append(f"chain_fetched_calls={len(chain.calls)}_puts={len(chain.puts)}")
+    except Exception as e:
+        result["error"] = str(e)
+    return result
