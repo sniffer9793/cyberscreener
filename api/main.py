@@ -16,7 +16,7 @@ from datetime import datetime
 import time
 import hashlib
 
-from core.scanner import run_scan, ALL_TICKERS, CYBER_UNIVERSE
+from core.scanner import run_scan, ALL_TICKERS, CYBER_UNIVERSE, fetch_options_chain, generate_plays, fetch_ticker_data
 from db.models import (
     init_db, save_scan, get_score_history,
     get_all_scores_for_backtest, get_scan_count, get_db,
@@ -447,6 +447,205 @@ def backtest_layers(
 def backtest_earnings(days: int = Query(180, ge=30, le=365)):
     """Q3: Optimal entry timing relative to earnings?"""
     return backtest_earnings_timing(days)
+
+
+# ─────────────────────────────────────────────
+# OPTIONS PLAY BUILDER ENDPOINTS
+# ─────────────────────────────────────────────
+
+_plays_cache = {}  # ticker -> {data, timestamp}
+_plays_status = {}  # ticker -> {running, message, result}
+
+def _fetch_plays_background(ticker):
+    """Background task to fetch options data and generate plays."""
+    global _plays_status, _plays_cache
+    _plays_status[ticker] = {"running": True, "message": f"Fetching price data for {ticker}..."}
+    try:
+        data = fetch_ticker_data(ticker)
+        if not data:
+            _plays_status[ticker] = {"running": False, "message": "done",
+                                     "result": {"ticker": ticker, "plays": [], "error": "Could not fetch data — ticker may be delisted or halted"}}
+            return
+
+        _plays_status[ticker]["message"] = f"Fetching options chain for {ticker}..."
+        chains = fetch_options_chain(ticker)
+        if not chains:
+            _plays_status[ticker] = {"running": False, "message": "done",
+                                     "result": {"ticker": ticker, "plays": [], "price": data.get("price"),
+                                                "rsi": data.get("rsi"), "iv_30d": data.get("iv_30d"),
+                                                "days_to_earnings": data.get("days_to_earnings"),
+                                                "beta": data.get("beta"), "perf_3m": data.get("perf_3m"),
+                                                "bb_width": data.get("bb_width"), "vol_ratio": data.get("vol_ratio"),
+                                                "pct_from_52w_high": data.get("pct_from_52w_high"),
+                                                "error": "No options chain available — stock may not have listed options"}}
+            return
+
+        _plays_status[ticker]["message"] = f"Generating plays for {ticker}..."
+        plays = generate_plays(
+            ticker=ticker, price=data["price"], chains=chains,
+            days_to_earnings=data.get("days_to_earnings"),
+            rsi=data.get("rsi", 50), iv_30d=data.get("iv_30d"),
+            price_above_sma20=data.get("price_above_sma20", True),
+            price_above_sma50=data.get("price_above_sma50", True),
+            perf_3m=data.get("perf_3m", 0),
+        )
+
+        result = {
+            "ticker": ticker, "price": data["price"],
+            "rsi": data.get("rsi"), "iv_30d": data.get("iv_30d"),
+            "days_to_earnings": data.get("days_to_earnings"),
+            "beta": data.get("beta"), "perf_3m": data.get("perf_3m"),
+            "bb_width": data.get("bb_width"), "vol_ratio": data.get("vol_ratio"),
+            "pct_from_52w_high": data.get("pct_from_52w_high"),
+            "plays": plays, "play_count": len(plays),
+            "timestamp": datetime.now().isoformat(),
+        }
+        _plays_cache[ticker] = {"data": result, "timestamp": datetime.now().isoformat()}
+        _plays_status[ticker] = {"running": False, "message": "done", "result": result}
+    except Exception as e:
+        _plays_status[ticker] = {"running": False, "message": "done",
+                                 "result": {"ticker": ticker, "plays": [], "error": str(e)}}
+
+
+@app.get("/plays/top/recommendations")
+def get_top_plays(limit: int = Query(5, ge=1, le=15)):
+    """Get play recommendations for the top-scored tickers from the latest scan."""
+    conn = get_db()
+    scan = conn.execute("SELECT id FROM scans ORDER BY id DESC LIMIT 1").fetchone()
+    if not scan:
+        conn.close()
+        return {"plays": [], "message": "No scans found. Run a scan first."}
+
+    rows = conn.execute("""
+        SELECT ticker, price, opt_score, lt_score, rsi, iv_30d, days_to_earnings,
+               bb_width, vol_ratio, beta, perf_3m, pct_from_52w_high
+        FROM scores WHERE scan_id = ? ORDER BY opt_score DESC LIMIT ?
+    """, (scan["id"], limit)).fetchall()
+    conn.close()
+
+    results = []
+    for row in rows:
+        row = dict(row)
+        ticker = row["ticker"]
+        try:
+            chains = fetch_options_chain(ticker)
+            if not chains:
+                results.append({"ticker": ticker, "opt_score": row["opt_score"],
+                                "lt_score": row["lt_score"], "price": row["price"],
+                                "plays": [], "error": "No options chain"})
+                continue
+
+            plays = generate_plays(
+                ticker=ticker, price=row["price"], chains=chains,
+                days_to_earnings=row.get("days_to_earnings"),
+                rsi=row.get("rsi", 50), iv_30d=row.get("iv_30d"),
+                price_above_sma20=True, price_above_sma50=True,
+                perf_3m=row.get("perf_3m", 0),
+            )
+
+            results.append({
+                "ticker": ticker, "opt_score": row["opt_score"],
+                "lt_score": row["lt_score"], "price": row["price"],
+                "rsi": row.get("rsi"), "iv_30d": row.get("iv_30d"),
+                "days_to_earnings": row.get("days_to_earnings"),
+                "plays": plays, "play_count": len(plays),
+            })
+            time.sleep(0.3)
+        except Exception as e:
+            results.append({"ticker": ticker, "opt_score": row["opt_score"],
+                            "price": row["price"], "plays": [], "error": str(e)})
+
+    return {
+        "results": results,
+        "total_plays": sum(r.get("play_count", 0) for r in results),
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@app.post("/plays/{ticker}/generate")
+def trigger_plays(ticker: str, background_tasks: BackgroundTasks):
+    """Trigger async play generation for a ticker. Poll /plays/{ticker}/status for results."""
+    ticker = ticker.upper()
+    if ticker not in ALL_TICKERS:
+        raise HTTPException(status_code=404, detail=f"{ticker} not in universe")
+
+    # Return cached if fresh (< 5 min)
+    if ticker in _plays_cache:
+        cached = _plays_cache[ticker]
+        try:
+            age = (datetime.now() - datetime.fromisoformat(cached["timestamp"])).seconds
+            if age < 300:
+                return {"status": "cached", "result": cached["data"]}
+        except Exception:
+            pass
+
+    if ticker in _plays_status and _plays_status[ticker].get("running"):
+        return {"status": "running", "message": _plays_status[ticker].get("message", "Working...")}
+
+    background_tasks.add_task(_fetch_plays_background, ticker)
+    return {"status": "started", "message": f"Generating plays for {ticker}..."}
+
+
+@app.get("/plays/{ticker}/status")
+def plays_status(ticker: str):
+    """Check status of play generation for a ticker."""
+    ticker = ticker.upper()
+    st = _plays_status.get(ticker)
+    if not st:
+        return {"status": "not_started"}
+    if st["running"]:
+        return {"status": "running", "message": st.get("message", "Working...")}
+    return {"status": "done", "result": st.get("result")}
+
+
+@app.get("/plays/{ticker}")
+def get_plays_for_ticker(ticker: str):
+    """Get cached plays or trigger generation. For sync use — may be slow."""
+    ticker = ticker.upper()
+    if ticker not in ALL_TICKERS:
+        raise HTTPException(status_code=404, detail=f"{ticker} not in universe")
+
+    # Return cached if available
+    if ticker in _plays_cache:
+        return _plays_cache[ticker]["data"]
+
+    # Check if result is ready from async
+    st = _plays_status.get(ticker)
+    if st and not st.get("running") and st.get("result"):
+        return st["result"]
+
+    # Fallback: sync fetch (will be slow)
+    try:
+        data = fetch_ticker_data(ticker)
+        if not data:
+            return {"ticker": ticker, "plays": [], "error": "Could not fetch data for ticker"}
+
+        chains = fetch_options_chain(ticker)
+        if not chains:
+            return {"ticker": ticker, "plays": [], "error": "No options chain available",
+                    "price": data.get("price")}
+
+        plays = generate_plays(
+            ticker=ticker, price=data["price"], chains=chains,
+            days_to_earnings=data.get("days_to_earnings"),
+            rsi=data.get("rsi", 50), iv_30d=data.get("iv_30d"),
+            price_above_sma20=data.get("price_above_sma20", True),
+            price_above_sma50=data.get("price_above_sma50", True),
+            perf_3m=data.get("perf_3m", 0),
+        )
+
+        return {
+            "ticker": ticker, "price": data["price"],
+            "rsi": data.get("rsi"), "iv_30d": data.get("iv_30d"),
+            "days_to_earnings": data.get("days_to_earnings"),
+            "beta": data.get("beta"), "perf_3m": data.get("perf_3m"),
+            "bb_width": data.get("bb_width"), "vol_ratio": data.get("vol_ratio"),
+            "pct_from_52w_high": data.get("pct_from_52w_high"),
+            "plays": plays, "play_count": len(plays),
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        return {"ticker": ticker, "plays": [], "error": str(e)}
 
 
 @app.get("/stats")

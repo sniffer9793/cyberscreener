@@ -12,13 +12,12 @@ body{background:#0a0e17;color:#e2e8f0;font-family:'DM Sans',-apple-system,sans-s
 .mono{font-family:'JetBrains Mono',monospace}
 .hdr{padding:16px 28px;border-bottom:1px solid #1a2235;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,#0f1520,#0a0e17)}
 .tabs{padding:12px 28px;display:flex;gap:8px;border-bottom:1px solid #1a2235}
-.tab{padding:10px 20px;background:transparent;border:1px solid #1a2235;border-radius:8px;color:#64748b;font-size:13px;font-weight:500;cursor:pointer;font-family:'JetBrains Mono',monospace}
+.tab{padding:10px 20px;background:transparent;border:1px solid #1a2235;border-radius:8px;color:#64748b;font-size:13px;font-weight:500;cursor:pointer;font-family:'JetBrains Mono',monospace;transition:all .15s}
 .tab.on{background:#00e5a012;border-color:#00e5a040;color:#00e5a0;font-weight:700}
+.tab:hover{border-color:#243049}
 .main{padding:24px 28px;max-width:1280px;margin:0 auto}
 .card{background:#0f1520;border:1px solid #1a2235;border-radius:10px;padding:20px;margin-bottom:16px}
-.grid{display:grid;gap:12px}
-.g5{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-.g2{grid-template-columns:1fr 1fr}
+.grid{display:grid;gap:12px}.g5{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.g2{grid-template-columns:1fr 1fr}
 .metric{padding:14px 16px;background:#0f1520;border-radius:8px;border:1px solid #1a2235}
 .metric-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
 .metric-val{font-size:26px;font-weight:800;font-family:'JetBrains Mono',monospace;line-height:1}
@@ -26,7 +25,7 @@ body{background:#0a0e17;color:#e2e8f0;font-family:'DM Sans',-apple-system,sans-s
 .row{display:grid;grid-template-columns:24px 56px 1fr 70px;align-items:center;gap:8px;padding:5px 0}
 .row-tk{font-size:13px;font-weight:700;color:#e2e8f0;font-family:'JetBrains Mono',monospace}
 .dim{color:#64748b}.mid{color:#94a3b8}
-.sec-title{font-size:18px;font-weight:800;letter-spacing:-0.3px;margin-bottom:2px}
+.sec-title{font-size:18px;font-weight:800;letter-spacing:-.3px;margin-bottom:2px}
 .sec-sub{font-size:12px;color:#64748b;margin-bottom:12px}
 .btn{padding:8px 18px;border-radius:6px;border:1px solid #00e5a040;background:#00e5a015;color:#00e5a0;font-size:12px;font-weight:700;cursor:pointer;font-family:'JetBrains Mono',monospace}
 .btn:hover{background:#00e5a025}
@@ -37,168 +36,175 @@ body{background:#0a0e17;color:#e2e8f0;font-family:'DM Sans',-apple-system,sans-s
 .tkr:hover{background:#141c2b}.tkr.sel{background:#00e5a010;border-left-color:#00e5a0}
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
 .dot{width:7px;height:7px;border-radius:50%;display:inline-block;background:#00e5a0;box-shadow:0 0 8px #00e5a060}
+.tip{padding:12px 16px;background:#0a0e17;border:1px solid #1a2235;border-radius:8px;margin-bottom:12px;font-size:12px;color:#94a3b8;line-height:1.6}
+.tip b{color:#e2e8f0;font-weight:600}
+.tip-icon{display:inline-block;width:18px;height:18px;border-radius:50%;background:#00e5a015;color:#00e5a0;text-align:center;line-height:18px;font-size:10px;font-weight:800;margin-right:6px}
+.layer{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace}
+.layer-on{background:#00e5a015;color:#00e5a0;border:1px solid #00e5a030}
+.layer-off{background:#1a2235;color:#475569;border:1px solid #1a223580}
+.component{display:flex;align-items:center;gap:6px;padding:4px 0}
+.pulse{animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
 @media(max-width:768px){.g2{grid-template-columns:1fr}.tabs{flex-wrap:wrap}.ticker-list{width:100%}}
 </style>
 </head>
 <body>
 <div id="app"><div style="padding:60px;text-align:center;color:#64748b">Loading CyberScreener...</div></div>
 <script>
-var currentTab='overview',D={},selTk=null,tkH=null,btP=30,playsData=null,playsTk=null;
-
+var currentTab='overview',D={},selTk=null,tkH=null,btP=30,playsData=null,playsTk=null,playsPoller=null,playsMsg='';
 function qs(s){return document.querySelector(s)}
-
-function F(u){return fetch(u).then(function(r){return r.ok?r.json():null}).catch(function(){return null})}
-
+function F(u,o){return fetch(u,o).then(function(r){return r.ok?r.json():null}).catch(function(){return null})}
 function sc(s,h,m){h=h||60;m=m||35;return s>=h?'#00e5a0':s>=m?'#ffb020':'#ff3b5c'}
 function bar(s){var p=Math.max(0,Math.min(100,s)),c=sc(s);return'<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:6px;background:#1a2235;border-radius:3px;overflow:hidden"><div style="width:'+p+'%;height:100%;background:'+c+';border-radius:3px"></div></div><span class="mono" style="font-size:13px;font-weight:700;color:'+c+';min-width:28px">'+s+'</span></div>'}
 function met(l,v,c,sub){return'<div class="metric"><div class="metric-label">'+l+'</div><div class="metric-val" style="color:'+(c||'#e2e8f0')+'">'+v+'</div>'+(sub?'<div class="metric-sub">'+sub+'</div>':'')+'</div>'}
 
+function ltBreakdown(r){
+  var rg=r.revenue_growth_pct||0,ps=r.ps_ratio||0,gm=r.gross_margin_pct||0,fcf=r.fcf_m||0,disc=r.pct_from_52w_high||0;
+  return[
+    {l:'Revenue Growth',v:rg>25?30:rg>15?15:rg>0?5:-10,m:30,d:rg?rg+'%':'—'},
+    {l:'Valuation',v:(ps<5&&rg>15)?25:(ps<10&&rg>20)?15:ps>30?-10:0,m:25,d:ps?ps+'x P/S':'—'},
+    {l:'Gross Margin',v:gm>75?20:gm>60?10:gm<40?-10:0,m:20,d:gm?gm+'%':'—'},
+    {l:'Free Cash Flow',v:fcf>500?20:fcf>0?10:-5,m:20,d:fcf?'$'+fcf+'M':'—'},
+    {l:'52w Discount',v:disc<-30?15:disc<-15?8:0,m:15,d:disc?disc+'%':'—'}
+  ];
+}
+function optBreakdown(r){
+  var dte=r.days_to_earnings,iv=r.iv_30d||0,vr=r.vol_ratio||1,rsi=r.rsi||50,bb=r.bb_width||999,beta=r.beta||1,sp=r.short_pct||0;
+  var ev=0;if(dte!=null){if(dte>=5&&dte<=14)ev=35;else if(dte>=15&&dte<=30)ev=25;else if(dte>=1&&dte<=4)ev=15}
+  return[
+    {l:'Earnings',v:ev,m:35,d:dte!=null?dte+'d':'—'},
+    {l:'IV',v:iv>60?20:iv>40?10:0,m:20,d:iv?iv+'%':'—'},
+    {l:'Volume',v:vr>2?20:vr>1.5?10:0,m:20,d:vr+'x'},
+    {l:'RSI',v:rsi<30?15:rsi>70?10:0,m:15,d:Math.round(rsi)+''},
+    {l:'BB Squeeze',v:bb<10?15:bb<15?8:0,m:15,d:bb<999?bb+'%':'—'},
+    {l:'Beta',v:beta>1.5?10:0,m:10,d:beta+''},
+    {l:'Short %',v:sp>10?10:0,m:10,d:sp?sp+'%':'—'}
+  ];
+}
+function rBD(items){
+  var h='';for(var i=0;i<items.length;i++){var it=items[i];var c=it.v>0?'#00e5a0':it.v<0?'#ff3b5c':'#243049';var w=it.v>0?Math.min(100,(it.v/it.m)*100):0;
+  h+='<div class="component"><span style="font-size:10px;color:#64748b;min-width:75px">'+it.l+'</span><div style="flex:1;height:4px;background:#1a2235;border-radius:2px;overflow:hidden"><div style="width:'+w+'%;height:100%;background:'+c+';border-radius:2px"></div></div><span class="mono" style="font-size:11px;font-weight:700;color:'+c+';min-width:24px;text-align:right">'+(it.v>0?'+':'')+it.v+'</span><span style="font-size:9px;color:#475569;min-width:48px;text-align:right">'+it.d+'</span></div>';}
+  return h;
+}
+function layerPills(r){var s=r.sec_score||0,se=r.sentiment_score||0,w=r.whale_score||0;return'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="layer '+(s?'layer-on':'layer-off')+'">📋 SEC '+(s?'+'+s:'OFF')+'</span><span class="layer '+(se?'layer-on':'layer-off')+'">💬 Sent '+(se?'+'+se:'OFF')+'</span><span class="layer '+(w?'layer-on':'layer-off')+'">🐋 Whale '+(w?'+'+w:'OFF')+'</span></div>';}
+
 function render(){
-  var s=D.stats||{};
-  qs('#app').innerHTML='<div class="hdr"><div style="display:flex;align-items:center;gap:12px"><span style="font-size:22px">🛡️</span><div><div style="font-size:18px;font-weight:800;color:#00e5a0">CyberScreener</div><div style="font-size:10px;color:#64748b;letter-spacing:2px;text-transform:uppercase">Investment Intelligence</div></div></div><div style="display:flex;align-items:center;gap:12px"><span class="dot"></span><span class="dim" style="font-size:11px">Online</span><button class="btn" id="sb" onclick="doScan()">▶ Run Scan</button></div></div><nav class="tabs"><button class="tab '+(currentTab==='overview'?'on':'')+'" onclick="currentTab=\'overview\';render()">◉ Overview</button><button class="tab '+(currentTab==='scores'?'on':'')+'" onclick="currentTab=\'scores\';render()">◆ Scores</button><button class="tab '+(currentTab==='plays'?'on':'')+'" onclick="currentTab=\'plays\';render()">⚡ Plays</button><button class="tab '+(currentTab==='backtest'?'on':'')+'" onclick="currentTab=\'backtest\';render()">◈ Backtest</button></nav><div class="main" id="ct"></div><footer style="padding:16px 28px;border-top:1px solid #1a2235;text-align:center"><span style="font-size:10px;color:#64748b">CyberScreener v2.0 — Not financial advice.</span></footer>';
+  qs('#app').innerHTML='<div class="hdr"><div style="display:flex;align-items:center;gap:12px"><span style="font-size:22px">🛡️</span><div><div style="font-size:18px;font-weight:800;color:#00e5a0">CyberScreener</div><div style="font-size:10px;color:#64748b;letter-spacing:2px;text-transform:uppercase">Cybersecurity Investment Intelligence</div></div></div><div style="display:flex;align-items:center;gap:12px"><span class="dot"></span><span class="dim" style="font-size:11px">Online</span><button class="btn" id="sb" onclick="doScan()">▶ Run Scan</button></div></div><nav class="tabs"><button class="tab '+(currentTab==='overview'?'on':'')+'" onclick="switchTab(\'overview\')">◉ Overview</button><button class="tab '+(currentTab==='scores'?'on':'')+'" onclick="switchTab(\'scores\')">◆ Scores</button><button class="tab '+(currentTab==='plays'?'on':'')+'" onclick="switchTab(\'plays\')">⚡ Plays</button><button class="tab '+(currentTab==='backtest'?'on':'')+'" onclick="switchTab(\'backtest\')">◈ Backtest</button></nav><div class="main" id="ct"></div><footer style="padding:16px 28px;border-top:1px solid #1a2235;text-align:center"><span style="font-size:10px;color:#64748b">CyberScreener v2.0 — Not financial advice. Scores are algorithmic signals, not buy/sell recommendations.</span></footer>';
   if(currentTab==='overview')rOverview();else if(currentTab==='scores')rScores();else if(currentTab==='plays')rPlays();else rBacktest();
 }
+function switchTab(t){currentTab=t;render()}
 
 function rOverview(){
   var s=D.stats||{},res=(D.latest&&D.latest.results)?D.latest.results:[];
-  var lt=res.slice(0,10);
-  var opt=res.slice().sort(function(a,b){return b.opt_score-a.opt_score}).slice(0,10);
-  var rsi=res.slice().sort(function(a,b){return a.rsi-b.rsi});
-  var h='<div class="grid g5">'+met('Total Scans',s.total_scans||0)+met('Tickers',s.unique_tickers_tracked||0)+met('Records',(s.total_score_records||0).toLocaleString())+met('Prices',(s.total_price_snapshots||0).toLocaleString())+met('Last Scan',s.last_scan?new Date(s.last_scan).toLocaleDateString():'—')+'</div>';
-  h+='<div class="grid g2" style="margin-top:16px"><div class="card"><div class="sec-title">📈 Long-Term Scores</div><div class="sec-sub">Top 10</div>';
+  var lt=res.slice(0,10),opt=res.slice().sort(function(a,b){return b.opt_score-a.opt_score}).slice(0,10),rsi=res.slice().sort(function(a,b){return a.rsi-b.rsi});
+  var h='<div class="tip"><span class="tip-icon">?</span> <b>How scores work:</b> CyberScreener scans '+res.length+' cybersecurity stocks every 2h. <b>LT Score</b> = long-term quality (revenue growth, margins, valuation, FCF, discount). <b>Opt Score</b> = options opportunity (earnings timing, IV, volume, RSI, Bollinger squeeze). Click <b>Scores</b> tab for component breakdowns.</div>';
+  h+='<div class="grid g5">'+met('Total Scans',s.total_scans||0)+met('Tickers',s.unique_tickers_tracked||0)+met('Records',(s.total_score_records||0).toLocaleString())+met('Prices',(s.total_price_snapshots||0).toLocaleString())+met('Last Scan',s.last_scan?new Date(s.last_scan).toLocaleDateString():'—')+'</div>';
+  h+='<div class="grid g2" style="margin-top:16px"><div class="card"><div class="sec-title">📈 Long-Term Scores</div><div class="sec-sub">Top 10 · Revenue + margins + valuation + FCF</div>';
   for(var i=0;i<lt.length;i++){var r=lt[i];h+='<div class="row"><span class="dim" style="font-size:11px">'+(i+1)+'</span><span class="row-tk">'+r.ticker+'</span>'+bar(r.lt_score)+'<span class="dim" style="font-size:12px;text-align:right">$'+r.price+'</span></div>'}
-  h+='</div><div class="card"><div class="sec-title">⚡ Options Scores</div><div class="sec-sub">Top 10</div>';
+  h+='</div><div class="card"><div class="sec-title">⚡ Options Scores</div><div class="sec-sub">Top 10 · Earnings + IV + volume + momentum</div>';
   for(var i=0;i<opt.length;i++){var r=opt[i];h+='<div class="row"><span class="dim" style="font-size:11px">'+(i+1)+'</span><span class="row-tk">'+r.ticker+'</span>'+bar(r.opt_score)+'<span class="dim" style="font-size:12px;text-align:right">RSI '+(r.rsi||'—')+'</span></div>'}
   h+='</div></div>';
-  if(rsi.length>0){
-    h+='<div class="card"><div class="sec-title">RSI Heatmap</div><div class="sec-sub">Sector technicals</div><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:flex-end;height:130px">';
-    for(var i=0;i<rsi.length;i++){var r=rsi[i];var c=r.rsi<30?'#00e5a0':r.rsi>70?'#ff3b5c':'#ffb020';h+='<div style="flex:1;min-width:18px;display:flex;flex-direction:column;justify-content:flex-end;height:100%;text-align:center"><div style="height:'+Math.max(r.rsi*1.2,4)+'px;background:'+c+';opacity:0.7;border-radius:3px 3px 0 0;margin:0 1px"></div><div style="font-size:7px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden" class="mono">'+r.ticker+'</div></div>'}
-    h+='</div></div>';
-  }
+  h+='<div class="card"><div class="sec-title">🧠 Intelligence Layers</div><div class="sec-sub">Additional signals that augment scores when enabled</div><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">';
+  h+='<div style="padding:14px;background:#0a0e17;border-radius:8px;border:1px solid #1a2235"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span>📋</span><span style="font-size:13px;font-weight:700">SEC Filings</span><span class="layer layer-off" style="margin-left:auto">STUB</span></div><div style="font-size:11px;color:#64748b;line-height:1.4">8-K filings, insider trading from EDGAR</div></div>';
+  h+='<div style="padding:14px;background:#0a0e17;border-radius:8px;border:1px solid #1a2235"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span>💬</span><span style="font-size:13px;font-weight:700">Sentiment</span><span class="layer layer-off" style="margin-left:auto">PLANNED</span></div><div style="font-size:11px;color:#64748b;line-height:1.4">StockTwits + Reddit chatter analysis</div></div>';
+  h+='<div style="padding:14px;background:#0a0e17;border-radius:8px;border:1px solid #1a2235"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span>🐋</span><span style="font-size:13px;font-weight:700">Whale Flow</span><span class="layer layer-off" style="margin-left:auto">PLANNED</span></div><div style="font-size:11px;color:#64748b;line-height:1.4">Unusual options activity / block trades</div></div>';
+  h+='</div></div>';
+  if(rsi.length>0){h+='<div class="card"><div class="sec-title">RSI Heatmap</div><div class="sec-sub">Green (&lt;30) = oversold · Red (&gt;70) = overbought</div><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:flex-end;height:130px">';for(var i=0;i<rsi.length;i++){var r=rsi[i];var c=r.rsi<30?'#00e5a0':r.rsi>70?'#ff3b5c':'#ffb020';h+='<div style="flex:1;min-width:18px;display:flex;flex-direction:column;justify-content:flex-end;height:100%;text-align:center" title="'+r.ticker+': RSI '+r.rsi+'"><div style="height:'+Math.max(r.rsi*1.2,4)+'px;background:'+c+';opacity:.7;border-radius:3px 3px 0 0;margin:0 1px"></div><div style="font-size:7px;color:#64748b;margin-top:2px" class="mono">'+r.ticker+'</div></div>'}h+='</div></div>';}
   qs('#ct').innerHTML=h;
 }
 
 function rScores(){
   var res=(D.latest&&D.latest.results)?D.latest.results:[];
-  var det='<div class="card" style="padding:40px;text-align:center"><div class="dim">← Select a ticker</div></div>';
-  if(selTk&&tkH&&tkH.history&&tkH.history.length>0){
-    var h=tkH.history,L=h[h.length-1],first=h[0],ch=L.lt_score-first.lt_score;
-    det='<div class="card"><div class="sec-title">'+selTk+'</div><div class="sec-sub">'+tkH.data_points+' data points</div><div class="grid g2" style="margin-top:12px">'+met('LT Score',L.lt_score,sc(L.lt_score))+met('Opt Score',L.opt_score,sc(L.opt_score,40,25))+met('LT Change',(ch>=0?'+':'')+ch,ch>=0?'#00e5a0':'#ff3b5c')+met('Price','$'+L.price)+'</div>';
-    det+='<div style="margin-top:16px"><div style="font-size:13px;font-weight:700;margin-bottom:8px">Trend</div>';
-    var step=Math.max(1,Math.floor(h.length/20));
-    for(var i=0;i<h.length;i+=step){var p=h[i];var d=new Date(p.timestamp).toLocaleDateString('en-US',{month:'short',day:'numeric'});det+='<div style="display:grid;grid-template-columns:55px 1fr 1fr 36px 36px;align-items:center;gap:4px;padding:2px 0"><span class="dim" style="font-size:9px">'+d+'</span><div style="height:4px;background:#1a2235;border-radius:2px;overflow:hidden"><div style="width:'+Math.min(100,p.lt_score)+'%;height:100%;background:#00e5a0"></div></div><div style="height:4px;background:#1a2235;border-radius:2px;overflow:hidden"><div style="width:'+Math.min(100,p.opt_score)+'%;height:100%;background:#3b82f6"></div></div><span class="mono" style="font-size:9px;color:#00e5a0">'+p.lt_score+'</span><span class="mono" style="font-size:9px;color:#3b82f6">'+p.opt_score+'</span></div>'}
-    det+='<div style="display:flex;gap:12px;margin-top:6px"><span style="font-size:10px;color:#00e5a0">■ LT</span><span style="font-size:10px;color:#3b82f6">■ Opt</span></div></div></div>';
-  }else if(selTk){det='<div class="card" style="padding:40px;text-align:center"><div class="dim">Loading '+selTk+'...</div></div>';}
-  var list='';
-  for(var i=0;i<res.length;i++){var r=res[i];list+='<div class="tkr '+(selTk===r.ticker?'sel':'')+'" onclick="pickTk(\''+r.ticker+'\')"><span class="row-tk">'+r.ticker+'</span><span class="dim" style="font-size:11px">$'+r.price+'</span><span class="badge" style="background:'+sc(r.lt_score)+'18;color:'+sc(r.lt_score)+';border:1px solid '+sc(r.lt_score)+'30">'+r.lt_score+'</span><span class="badge" style="background:'+sc(r.opt_score,40,25)+'18;color:'+sc(r.opt_score,40,25)+';border:1px solid '+sc(r.opt_score,40,25)+'30">'+r.opt_score+'</span></div>'}
-  qs('#ct').innerHTML='<div style="display:flex;gap:16px;min-height:60vh"><div class="card ticker-list" style="padding:12px"><div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:4px 8px;margin-bottom:8px">'+res.length+' tickers</div>'+list+'</div><div style="flex:1">'+det+'</div></div>';
+  var det='<div class="card" style="padding:40px;text-align:center"><div style="font-size:36px;margin-bottom:12px">◆</div><div style="font-size:14px;font-weight:600;margin-bottom:8px">Score Explorer</div><div class="dim" style="font-size:12px;max-width:400px;margin:0 auto;line-height:1.6">Select a ticker to see score history, component breakdown, and intelligence layer status.</div></div>';
+  if(selTk){
+    var latest=null;for(var i=0;i<res.length;i++){if(res[i].ticker===selTk){latest=res[i];break}}
+    if(tkH&&tkH.history&&tkH.history.length>0){
+      var hist=tkH.history,L=hist[hist.length-1],first=hist[0],ch=L.lt_score-first.lt_score;
+      det='<div class="card"><div class="sec-title">'+selTk+'</div><div class="sec-sub">'+tkH.data_points+' data points</div>';
+      det+='<div class="grid g2" style="margin-top:12px">'+met('LT Score',L.lt_score,sc(L.lt_score),'Long-term quality')+met('Opt Score',L.opt_score,sc(L.opt_score,40,25),'Options opportunity')+met('LT Δ',(ch>=0?'+':'')+ch,ch>=0?'#00e5a0':'#ff3b5c','Over period')+met('Price','$'+L.price)+'</div>';
+      if(latest){det+=layerPills(latest);det+='<div class="grid g2" style="margin-top:16px"><div style="padding:12px;background:#0a0e17;border-radius:8px;border:1px solid #1a2235"><div style="font-size:12px;font-weight:700;margin-bottom:8px;color:#00e5a0">📈 LT Components</div>'+rBD(ltBreakdown(latest))+'</div><div style="padding:12px;background:#0a0e17;border-radius:8px;border:1px solid #1a2235"><div style="font-size:12px;font-weight:700;margin-bottom:8px;color:#3b82f6">⚡ Opt Components</div>'+rBD(optBreakdown(latest))+'</div></div>';}
+      det+='<div style="margin-top:16px"><div style="font-size:13px;font-weight:700;margin-bottom:8px">Score Trend</div>';
+      var step=Math.max(1,Math.floor(hist.length/20));
+      for(var i=0;i<hist.length;i+=step){var p=hist[i];var d=new Date(p.timestamp).toLocaleDateString('en-US',{month:'short',day:'numeric'});det+='<div style="display:grid;grid-template-columns:55px 1fr 1fr 36px 36px;align-items:center;gap:4px;padding:2px 0"><span class="dim" style="font-size:9px">'+d+'</span><div style="height:4px;background:#1a2235;border-radius:2px;overflow:hidden"><div style="width:'+Math.min(100,p.lt_score)+'%;height:100%;background:#00e5a0"></div></div><div style="height:4px;background:#1a2235;border-radius:2px;overflow:hidden"><div style="width:'+Math.min(100,p.opt_score)+'%;height:100%;background:#3b82f6"></div></div><span class="mono" style="font-size:9px;color:#00e5a0">'+p.lt_score+'</span><span class="mono" style="font-size:9px;color:#3b82f6">'+p.opt_score+'</span></div>'}
+      det+='<div style="display:flex;gap:12px;margin-top:6px"><span style="font-size:10px;color:#00e5a0">■ LT</span><span style="font-size:10px;color:#3b82f6">■ Opt</span></div></div></div>';
+    }else if(!tkH){det='<div class="card" style="padding:40px;text-align:center"><div class="dim pulse">Loading '+selTk+'...</div></div>';}
+  }
+  var list='';for(var i=0;i<res.length;i++){var r=res[i];list+='<div class="tkr '+(selTk===r.ticker?'sel':'')+'" onclick="pickTk(\''+r.ticker+'\')"><span class="row-tk">'+r.ticker+'</span><span class="dim" style="font-size:11px">$'+r.price+'</span><span class="badge" style="background:'+sc(r.lt_score)+'18;color:'+sc(r.lt_score)+';border:1px solid '+sc(r.lt_score)+'30">'+r.lt_score+'</span><span class="badge" style="background:'+sc(r.opt_score,40,25)+'18;color:'+sc(r.opt_score,40,25)+';border:1px solid '+sc(r.opt_score,40,25)+'30">'+r.opt_score+'</span></div>'}
+  qs('#ct').innerHTML='<div style="display:flex;gap:16px;min-height:60vh"><div class="card ticker-list" style="padding:12px"><div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:4px 8px;margin-bottom:4px">'+res.length+' tickers</div><div style="font-size:10px;color:#475569;padding:0 8px 8px">Click for breakdown</div>'+list+'</div><div style="flex:1">'+det+'</div></div>';
+}
+function pickTk(t){selTk=t;tkH=null;rScores();F('/scores/'+t+'?days=180').then(function(d){tkH=d;rScores()})}
+
+function rPlays(){
+  var res=(D.latest&&D.latest.results)?D.latest.results:[],opt=res.slice().sort(function(a,b){return b.opt_score-a.opt_score}),list='';
+  for(var i=0;i<opt.length;i++){var r=opt[i];list+='<div class="tkr '+(playsTk===r.ticker?'sel':'')+'" onclick="loadPlays(\''+r.ticker+'\')"><span class="row-tk">'+r.ticker+'</span><span class="dim" style="font-size:11px">$'+r.price+'</span><span class="badge" style="background:'+sc(r.opt_score,40,25)+'18;color:'+sc(r.opt_score,40,25)+';border:1px solid '+sc(r.opt_score,40,25)+'30">'+r.opt_score+'</span></div>'}
+  var det='';
+  if(!playsTk){
+    det='<div class="card" style="padding:40px;text-align:center"><div style="font-size:36px;margin-bottom:12px">⚡</div><div style="font-size:14px;font-weight:600;margin-bottom:8px">Options Play Builder</div><div class="dim" style="font-size:12px;max-width:440px;margin:0 auto;line-height:1.6">Select a ticker to fetch its live options chain and generate strategy recommendations with specific strikes, expiries, and risk/reward.</div></div><div class="tip"><span class="tip-icon">?</span> <b>Strategies generated:</b> Long calls/puts (directional), straddles &amp; strangles (earnings/volatility), bull/bear vertical spreads (defined risk), and credit spreads (sell premium). Takes 10–20s per ticker. Higher Opt Score = more catalysts.</div>';
+  }else if(!playsData){
+    det='<div class="card" style="padding:40px;text-align:center"><div style="font-size:24px;margin-bottom:12px" class="pulse">⟳</div><div style="font-size:14px;color:#94a3b8;margin-bottom:8px">Generating plays for '+playsTk+'</div><div id="plays-msg" style="font-size:12px;color:#475569">'+(playsMsg||'Starting...')+'</div><div style="margin-top:12px;font-size:10px;color:#475569">Fetching live options chain — typically 10–20s</div></div>';
+  }else if(playsData.error&&(!playsData.plays||playsData.plays.length===0)){
+    det='<div class="card" style="padding:24px"><div class="sec-title">'+playsTk+'</div>';
+    if(playsData.price)det+='<div class="mono" style="font-size:20px;font-weight:800;margin:8px 0">$'+playsData.price+'</div>';
+    det+='<div style="margin-top:12px;padding:16px;background:#1a0a0a;border:1px solid #ff3b5c30;border-radius:8px"><span style="color:#ff3b5c;font-size:13px">⚠ '+playsData.error+'</span></div></div>';
+  }else{
+    var p=playsData;
+    det='<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px"><div><div class="sec-title">'+p.ticker+' Play Builder</div><div class="sec-sub">'+p.play_count+' play'+(p.play_count!==1?'s':'')+' · '+new Date(p.timestamp).toLocaleTimeString()+'</div></div><div style="text-align:right"><div class="mono" style="font-size:24px;font-weight:800">$'+p.price+'</div></div></div>';
+    det+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(100px,1fr));margin-top:12px">';
+    det+=met('RSI',p.rsi!=null?p.rsi:'—',p.rsi!=null?(p.rsi<30?'#00e5a0':p.rsi>70?'#ff3b5c':'#ffb020'):'#64748b',p.rsi!=null?(p.rsi<30?'Oversold':p.rsi>70?'Overbought':'Neutral'):'');
+    det+=met('IV',p.iv_30d!=null?p.iv_30d+'%':'—',p.iv_30d!=null?(p.iv_30d>50?'#ff3b5c':p.iv_30d>30?'#ffb020':'#00e5a0'):'#64748b',p.iv_30d!=null?(p.iv_30d>50?'Expensive':''):'');
+    det+=met('Earnings',p.days_to_earnings!=null?p.days_to_earnings+'d':'—',p.days_to_earnings!=null&&p.days_to_earnings<=14?'#00e5a0':'#64748b');
+    det+=met('Beta',p.beta!=null?p.beta:'—','#e2e8f0');
+    det+=met('Vol',p.vol_ratio!=null?p.vol_ratio+'x':'—',p.vol_ratio!=null&&p.vol_ratio>2?'#00e5a0':'#64748b');
+    det+='</div></div>';
+    if(p.plays&&p.plays.length>0){for(var i=0;i<p.plays.length;i++){var pl=p.plays[i];var dC=pl.direction.indexOf('Bullish')>=0?'#00e5a0':pl.direction.indexOf('Bearish')>=0?'#ff3b5c':'#3b82f6';
+      det+='<div class="card" style="border-left:3px solid '+dC+'"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px"><div><span style="font-size:15px;font-weight:800;color:'+dC+'">'+pl.emoji+' '+pl.strategy+'</span><span class="badge" style="margin-left:8px;background:'+dC+'18;color:'+dC+';border:1px solid '+dC+'30;font-size:10px">'+pl.direction+'</span></div><div style="text-align:right"><div class="mono" style="font-size:14px;font-weight:700">'+pl.action+'</div><div class="dim" style="font-size:11px">Exp: '+pl.expiry+' ('+pl.dte+'d)</div></div></div>';
+      det+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:8px">';
+      var mc=function(lb,vl,cl){return'<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">'+lb+'</div><div class="mono" style="font-size:14px;font-weight:700;color:'+(cl||'#e2e8f0')+'">'+vl+'</div></div>'};
+      det+=mc('Entry','$'+pl.entry_price)+mc('Breakeven',''+pl.breakeven)+mc('Max Loss','$'+Number(pl.max_loss).toLocaleString(),'#ff3b5c')+mc('Max Gain',''+pl.max_gain,'#00e5a0');
+      if(pl.bid!=null)det+=mc('Bid/Ask','$'+pl.bid+' / $'+pl.ask);
+      det+=mc('IV',pl.iv+'%','#ffb020')+mc('Volume',Number(pl.volume).toLocaleString())+mc('Open Int',Number(pl.open_interest).toLocaleString());
+      det+='</div><div style="margin-top:10px;padding:10px;background:#0a0e1780;border-radius:6px;border:1px solid #1a2235"><div style="font-size:10px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Rationale</div><div style="font-size:11px;color:#94a3b8;line-height:1.5">'+pl.rationale+'</div></div><div style="margin-top:6px;padding:8px 10px;background:#1a0a0a40;border-radius:6px;border:1px solid #ff3b5c15"><div style="font-size:10px;color:#ff3b5c80">⚠ '+pl.risk_notes+'</div></div></div>';
+    }}else{det+='<div class="card" style="padding:24px;text-align:center"><div class="dim" style="line-height:1.6">No plays generated — no upcoming earnings, low IV, or no directional bias. Try a higher Opt Score ticker.</div></div>';}
+  }
+  qs('#ct').innerHTML='<div style="display:flex;gap:16px;min-height:60vh"><div class="card ticker-list" style="padding:12px"><div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:4px 8px;margin-bottom:4px">By Options Score</div><div style="font-size:10px;color:#475569;padding:0 8px 8px">Click to generate</div>'+list+'</div><div style="flex:1">'+det+'</div></div>';
 }
 
-function pickTk(t){selTk=t;tkH=null;rScores();F('/scores/'+t+'?days=180').then(function(d){tkH=d;rScores()})}
+function loadPlays(t){
+  if(playsPoller){clearInterval(playsPoller);playsPoller=null}
+  playsTk=t;playsData=null;playsMsg='Starting...';rPlays();
+  F('/plays/'+t+'/generate',{method:'POST'}).then(function(d){
+    if(!d){playsData={ticker:t,plays:[],error:'Could not reach API'};rPlays();return}
+    if(d.status==='cached'){playsData=d.result;rPlays();return}
+    playsMsg=d.message||'Working...';var el=document.getElementById('plays-msg');if(el)el.textContent=playsMsg;
+    playsPoller=setInterval(function(){
+      F('/plays/'+t+'/status').then(function(s){
+        if(!s||playsTk!==t){clearInterval(playsPoller);playsPoller=null;return}
+        if(s.status==='done'){clearInterval(playsPoller);playsPoller=null;playsData=s.result||{ticker:t,plays:[],error:'No data'};rPlays();}
+        else if(s.status==='running'){playsMsg=s.message||'Working...';var el=document.getElementById('plays-msg');if(el)el.textContent=playsMsg;}
+      })
+    },2000);
+  });
+  setTimeout(function(){if(playsPoller&&!playsData&&playsTk===t){clearInterval(playsPoller);playsPoller=null;playsData={ticker:t,plays:[],error:'Timed out after 45s — try again'};rPlays();}},45000);
+}
 
 function rBacktest(){
   var d=D.backtest;
-  if(!d){qs('#ct').innerHTML='<div class="card" style="padding:40px;text-align:center"><div style="font-size:36px;margin-bottom:12px">📊</div><div style="font-size:14px;font-weight:600">No backtest data</div></div>';return}
-  var sd=d.score_vs_returns||{},ld=d.layer_attribution||{},ed=d.earnings_timing||{};
-  var h='<div style="display:flex;gap:8px;align-items:center;margin-bottom:20px"><span class="dim" style="font-size:12px">Forward:</span><button class="btn-p '+(btP===14?'on':'')+'" onclick="chgP(14)">14d</button><button class="btn-p '+(btP===30?'on':'')+'" onclick="chgP(30)">30d</button><button class="btn-p '+(btP===60?'on':'')+'" onclick="chgP(60)">60d</button><span class="dim" style="font-size:11px;margin-left:auto">'+(sd.total_observations||0)+' obs</span></div>';
-  if(sd.lt_correlation!=null){var c=sd.lt_correlation,o=sd.opt_correlation;h+='<div class="grid g2">'+met('LT ↔ Return',c!=null?c.toFixed(3):'—',c>0.1?'#00e5a0':c<-0.05?'#ff3b5c':'#ffb020',c>0.15?'Strong ✓':c>0.05?'Weak':'No signal')+met('Opt ↔ Return',o!=null?o.toFixed(3):'—',o>0.1?'#00e5a0':o<-0.05?'#ff3b5c':'#ffb020')+'</div>'}
+  if(!d){qs('#ct').innerHTML='<div class="card" style="padding:40px;text-align:center"><div style="font-size:36px;margin-bottom:12px">📊</div><div style="font-size:14px;font-weight:600;margin-bottom:8px">Backtest</div><div class="dim" style="font-size:12px">Loading... Analyzing historical scores vs actual returns.</div></div>';return}
+  var sd=d.score_vs_returns||{},ld=d.layer_attribution||{};
+  var h='<div class="tip"><span class="tip-icon">?</span> <b>Backtest:</b> Scores grouped into quintiles (Q1=lowest, Q5=highest) and compared against actual forward returns. If the model works, Q5 should outperform Q1.</div>';
+  h+='<div style="display:flex;gap:8px;align-items:center;margin-bottom:20px"><span class="dim" style="font-size:12px">Forward:</span><button class="btn-p '+(btP===14?'on':'')+'" onclick="chgP(14)">14d</button><button class="btn-p '+(btP===30?'on':'')+'" onclick="chgP(30)">30d</button><button class="btn-p '+(btP===60?'on':'')+'" onclick="chgP(60)">60d</button><span class="dim" style="font-size:11px;margin-left:auto">'+(sd.total_observations||0)+' obs</span></div>';
+  if(sd.lt_correlation!=null){var c2=sd.lt_correlation,o=sd.opt_correlation;h+='<div class="grid g2">'+met('LT ↔ Return',c2!=null?c2.toFixed(3):'—',c2>0.1?'#00e5a0':c2<-0.05?'#ff3b5c':'#ffb020',c2>0.15?'Strong ✓':c2>0.05?'Weak':'None')+met('Opt ↔ Return',o!=null?o.toFixed(3):'—',o>0.1?'#00e5a0':o<-0.05?'#ff3b5c':'#ffb020')+'</div>'}
   var ltQ=sd['Long-Term Score'];
-  if(ltQ&&!ltQ.error){
-    var entries=Object.entries(ltQ);var mx=1;
-    for(var i=0;i<entries.length;i++){var av=Math.abs(entries[i][1].avg_return||0);if(av>mx)mx=av}
-    h+='<div class="card" style="margin-top:16px"><div class="sec-title">Score Quintile → Return</div><div class="sec-sub">Does scoring predict '+btP+'d returns?</div><div style="display:flex;gap:8px;align-items:flex-end;height:200px;padding-bottom:30px">';
-    for(var i=0;i<entries.length;i++){var l=entries[i][0],s=entries[i][1];var ht=Math.abs(s.avg_return||0)/mx*150;var c=(s.avg_return||0)>=0?'#00e5a0':'#ff3b5c';h+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px"><span class="mono" style="font-size:11px;color:'+c+';font-weight:700">'+((s.avg_return||0)>0?'+':'')+(s.avg_return||0).toFixed(1)+'%</span><div style="width:80%;height:'+Math.max(ht,4)+'px;background:'+c+';opacity:0.75;border-radius:4px"></div><span class="dim" style="font-size:9px;text-align:center">'+l+'</span><span class="dim" style="font-size:8px">n='+s.count+' '+(s.win_rate||0).toFixed(0)+'%w</span></div>'}
-    h+='</div></div>';
-  }
-  var layers=[['sec_filings','SEC'],['insider_buying','Insider'],['sentiment','Sentiment'],['whale_flow','Whale']];
-  var lrs=[];for(var i=0;i<layers.length;i++){var k=layers[i][0],n=layers[i][1];if(ld[k]&&ld[k].alpha!=null)lrs.push({n:n,a:ld[k].alpha})}
-  if(lrs.length){var mx2=1;for(var i=0;i<lrs.length;i++){var av=Math.abs(lrs[i].a);if(av>mx2)mx2=av}h+='<div class="card"><div class="sec-title">Layer Alpha</div><div class="sec-sub">Bullish vs absent signal return diff</div>';for(var i=0;i<lrs.length;i++){var d2=lrs[i];var c=d2.a>=0?'#00e5a0':'#ff3b5c';h+='<div style="display:grid;grid-template-columns:80px 1fr 60px;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #1a2235"><span class="mid" style="font-size:12px">'+d2.n+'</span><div style="height:12px;background:'+c+';opacity:0.75;border-radius:4px;width:'+Math.max(Math.abs(d2.a)/mx2*60,4)+'%"></div><span class="mono" style="font-size:12px;color:'+c+';font-weight:700;text-align:right">'+(d2.a>0?'+':'')+d2.a.toFixed(1)+'%</span></div>'}h+='</div>'}
+  if(ltQ&&!ltQ.error){var entries=Object.entries(ltQ);var mx=1;for(var i=0;i<entries.length;i++){var av=Math.abs(entries[i][1].avg_return||0);if(av>mx)mx=av}
+    h+='<div class="card" style="margin-top:16px"><div class="sec-title">Quintile → Return</div><div class="sec-sub">Higher quintile = higher score. Green = positive return.</div><div style="display:flex;gap:8px;align-items:flex-end;height:200px;padding-bottom:30px">';
+    for(var i=0;i<entries.length;i++){var l=entries[i][0],sv=entries[i][1];var ht=Math.abs(sv.avg_return||0)/mx*150;var c=(sv.avg_return||0)>=0?'#00e5a0':'#ff3b5c';h+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px"><span class="mono" style="font-size:11px;color:'+c+';font-weight:700">'+((sv.avg_return||0)>0?'+':'')+(sv.avg_return||0).toFixed(1)+'%</span><div style="width:80%;height:'+Math.max(ht,4)+'px;background:'+c+';opacity:.75;border-radius:4px"></div><span class="dim" style="font-size:9px">'+l+'</span><span class="dim" style="font-size:8px">n='+sv.count+'</span></div>'}h+='</div></div>';}
   qs('#ct').innerHTML=h;
 }
 
-function rPlays(){
-  var res=(D.latest&&D.latest.results)?D.latest.results:[];
-  var opt=res.slice().sort(function(a,b){return b.opt_score-a.opt_score});
-  // Ticker sidebar
-  var list='';
-  for(var i=0;i<opt.length;i++){var r=opt[i];list+='<div class="tkr '+(playsTk===r.ticker?'sel':'')+'" onclick="loadPlays(\''+r.ticker+'\')"><span class="row-tk">'+r.ticker+'</span><span class="dim" style="font-size:11px">$'+r.price+'</span><span class="badge" style="background:'+sc(r.opt_score,40,25)+'18;color:'+sc(r.opt_score,40,25)+';border:1px solid '+sc(r.opt_score,40,25)+'30">'+r.opt_score+'</span></div>'}
-
-  var det='';
-  if(!playsTk){
-    det='<div class="card" style="padding:40px;text-align:center"><div style="font-size:36px;margin-bottom:12px">⚡</div><div style="font-size:14px;font-weight:600;margin-bottom:8px">Options Play Builder</div><div class="dim" style="font-size:12px;max-width:400px;margin:0 auto">Select a ticker to generate real-time options play recommendations with strike prices, expiries, and risk/reward profiles.</div></div>';
-  }else if(!playsData){
-    det='<div class="card" style="padding:40px;text-align:center"><div style="font-size:14px;color:#64748b">⟳ Loading options chain for '+playsTk+'...</div><div style="font-size:11px;color:#475569;margin-top:8px">Fetching live data from market...</div></div>';
-  }else if(playsData.error && (!playsData.plays || playsData.plays.length===0)){
-    det='<div class="card" style="padding:24px"><div class="sec-title">'+playsTk+'</div><div style="margin-top:12px;padding:16px;background:#1a0a0a;border:1px solid #ff3b5c30;border-radius:8px"><span style="color:#ff3b5c;font-size:13px">⚠ '+playsData.error+'</span></div></div>';
-  }else{
-    var p=playsData;
-    // Header with key metrics
-    det='<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="sec-title">'+p.ticker+' Play Builder</div><div class="sec-sub">'+p.play_count+' play'+(p.play_count!==1?'s':'')+' generated · '+new Date(p.timestamp).toLocaleTimeString()+'</div></div><div style="text-align:right"><div style="font-size:24px;font-weight:800;font-family:JetBrains Mono,monospace">$'+p.price+'</div></div></div>';
-    // Metrics row
-    det+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));margin-top:12px">';
-    det+=met('RSI',p.rsi!=null?p.rsi:'—',p.rsi<30?'#00e5a0':p.rsi>70?'#ff3b5c':'#ffb020');
-    det+=met('IV 30d',p.iv_30d!=null?p.iv_30d+'%':'—',p.iv_30d>50?'#ff3b5c':p.iv_30d>30?'#ffb020':'#00e5a0');
-    det+=met('Earnings',p.days_to_earnings!=null?p.days_to_earnings+'d':'—',p.days_to_earnings!=null&&p.days_to_earnings<=14?'#00e5a0':'#64748b');
-    det+=met('Beta',p.beta!=null?p.beta:'—');
-    det+=met('Vol Ratio',p.vol_ratio!=null?p.vol_ratio+'x':'—',p.vol_ratio>2?'#00e5a0':p.vol_ratio>1.5?'#ffb020':'#64748b');
-    det+=met('52w Δ',p.pct_from_52w_high!=null?p.pct_from_52w_high+'%':'—',p.pct_from_52w_high<-20?'#00e5a0':p.pct_from_52w_high<-5?'#ffb020':'#64748b');
-    det+='</div></div>';
-
-    // Individual plays
-    if(p.plays && p.plays.length>0){
-      for(var i=0;i<p.plays.length;i++){
-        var pl=p.plays[i];
-        var dC=pl.direction.indexOf('Bullish')>=0?'#00e5a0':pl.direction.indexOf('Bearish')>=0?'#ff3b5c':'#3b82f6';
-        det+='<div class="card" style="border-left:3px solid '+dC+'">';
-        // Play header
-        det+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><span style="font-size:15px;font-weight:800;color:'+dC+'">'+pl.emoji+' '+pl.strategy+'</span><span class="badge" style="margin-left:8px;background:'+dC+'18;color:'+dC+';border:1px solid '+dC+'30;font-size:10px">'+pl.direction+'</span></div><div style="text-align:right"><div class="mono" style="font-size:14px;font-weight:700;color:#e2e8f0">'+pl.action+'</div><div class="dim" style="font-size:11px">Exp: '+pl.expiry+' ('+pl.dte+'d)</div></div></div>';
-        // Play details grid
-        det+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">';
-        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Entry</div><div class="mono" style="font-size:14px;font-weight:700;color:#e2e8f0">$'+pl.entry_price+'</div></div>';
-        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Breakeven</div><div class="mono" style="font-size:14px;font-weight:700;color:#e2e8f0">'+pl.breakeven+'</div></div>';
-        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Max Loss</div><div class="mono" style="font-size:14px;font-weight:700;color:#ff3b5c">$'+pl.max_loss+'</div></div>';
-        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Max Gain</div><div class="mono" style="font-size:14px;font-weight:700;color:#00e5a0">'+pl.max_gain+'</div></div>';
-        if(pl.bid!=null){det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Bid/Ask</div><div class="mono" style="font-size:13px;color:#94a3b8">$'+pl.bid+' / $'+pl.ask+'</div></div>';}
-        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">IV</div><div class="mono" style="font-size:14px;font-weight:700;color:#ffb020">'+pl.iv+'%</div></div>';
-        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Volume</div><div class="mono" style="font-size:13px;color:#94a3b8">'+pl.volume.toLocaleString()+'</div></div>';
-        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Open Interest</div><div class="mono" style="font-size:13px;color:#94a3b8">'+pl.open_interest.toLocaleString()+'</div></div>';
-        det+='</div>';
-        // Rationale & risk
-        det+='<div style="margin-top:10px;padding:10px;background:#0a0e1780;border-radius:6px;border:1px solid #1a2235"><div style="font-size:11px;color:#94a3b8;line-height:1.5">'+pl.rationale+'</div></div>';
-        det+='<div style="margin-top:6px;padding:8px 10px;background:#1a0a0a40;border-radius:6px;border:1px solid #ff3b5c15"><div style="font-size:10px;color:#ff3b5c80">⚠ '+pl.risk_notes+'</div></div>';
-        det+='</div>';
-      }
-    }else{
-      det+='<div class="card" style="padding:24px;text-align:center"><div class="dim">No plays generated — may lack earnings catalyst or sufficient IV.</div></div>';
-    }
-  }
-
-  qs('#ct').innerHTML='<div style="display:flex;gap:16px;min-height:60vh"><div class="card ticker-list" style="padding:12px"><div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;margin-bottom:8px"><span class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:1px">By Opt Score</span></div>'+list+'</div><div style="flex:1">'+det+'</div></div>';
-}
-
-function loadPlays(t){playsTk=t;playsData=null;rPlays();F('/plays/'+t).then(function(d){playsData=d;rPlays()})}
-
 function chgP(p){btP=p;qs('#ct').innerHTML='<div style="padding:40px;text-align:center;color:#64748b">Recalculating...</div>';F('/backtest?days=180&forward_period='+p).then(function(b){D.backtest=b;rBacktest()})}
+function doScan(){var b=qs('#sb');if(b){b.textContent='⟳ Scanning...';b.style.opacity='0.5'}fetch('/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});var p=setInterval(function(){F('/scan/status').then(function(s){if(s&&!s.running){clearInterval(p);if(b){b.textContent='✓ Done';b.style.opacity='1'}F('/stats').then(function(st){D.stats=st;F('/scores/latest?limit=50').then(function(la){D.latest=la;render()})})}})},3000);}
 
-function doScan(){
-  var b=qs('#sb');if(b){b.textContent='⟳ Scanning...';b.style.opacity='0.5'}
-  fetch('/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  var p=setInterval(function(){F('/scan/status').then(function(s){if(s&&!s.running){clearInterval(p);if(b){b.textContent='✓ Done';b.style.opacity='1'}F('/stats').then(function(st){D.stats=st;F('/scores/latest?limit=50').then(function(la){D.latest=la;render()})})}})},3000);
-}
-
-// Boot
-F('/stats').then(function(s){
-  D.stats=s;
-  return F('/scores/latest?limit=50');
-}).then(function(l){
-  D.latest=l;
-  render();
-  // Load backtest in background — don't block dashboard
-  F('/backtest?days=180&forward_period=30').then(function(b){
-    D.backtest=b;
-    if(currentTab==='backtest')rBacktest();
-  });
-});
+F('/stats').then(function(s){D.stats=s;return F('/scores/latest?limit=50')}).then(function(l){D.latest=l;render();F('/backtest?days=180&forward_period=30').then(function(b){D.backtest=b;if(currentTab==='backtest')rBacktest()})});
 </script>
 </body>
 </html>
