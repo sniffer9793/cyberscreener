@@ -1,335 +1,326 @@
 """
-Backtest engine for CyberScreener.
+Backtest Engine v2 — Uses stored prices from DB only (no yfinance calls).
 
-Answers three key questions:
-1. Did my scoring predict actual 30-day returns?
-2. Which intelligence layers added real alpha?
-3. What was the optimal entry timing vs. earnings?
+Analyses:
+1. Score vs Returns (quintile analysis): Did high scores predict high returns?
+2. Component Attribution: Which score components best predicted returns?
+3. Earnings Timing: Optimal entry window relative to earnings dates?
+4. Self-Calibration: Auto-adjust scoring weights based on what actually predicted returns.
 """
 
-import yfinance as yf
-import pandas as pd
+import json
 import numpy as np
 from datetime import datetime, timedelta
-from db.models import get_db, get_all_scores_for_backtest, get_price_on_date
-import json
+from collections import defaultdict
+
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from db.models import get_db, get_all_scores_for_backtest, get_nearest_price, save_score_weights, get_latest_weights
 
 
-def fetch_forward_returns(ticker, entry_date_str, periods=[7, 14, 30, 60]):
-    """Fetch actual forward returns from entry date.
-
-    Returns dict like {7: 2.3, 14: -1.1, 30: 5.4, 60: 8.2} (percent returns)
+def _get_forward_return(ticker, score_date_str, forward_days):
     """
-    try:
-        entry_date = datetime.strptime(entry_date_str[:10], "%Y-%m-%d")
-        end_date = entry_date + timedelta(days=max(periods) + 5)
-
-        t = yf.Ticker(ticker)
-        hist = t.history(start=entry_date.strftime("%Y-%m-%d"),
-                         end=end_date.strftime("%Y-%m-%d"))
-
-        if hist.empty or len(hist) < 2:
-            return None
-
-        entry_price = hist["Close"].iloc[0]
-        returns = {}
-
-        for p in periods:
-            # Find the trading day closest to p days out
-            target_idx = min(p, len(hist) - 1)
-            if target_idx > 0:
-                future_price = hist["Close"].iloc[target_idx]
-                returns[p] = round(((future_price / entry_price) - 1) * 100, 2)
-            else:
-                returns[p] = None
-
-        return returns
-    except Exception:
+    Calculate forward return for a ticker from a specific date.
+    Uses stored prices from DB — no external API calls.
+    """
+    entry_price = get_nearest_price(ticker, score_date_str, window_days=3)
+    if not entry_price:
         return None
+
+    target_date = datetime.strptime(score_date_str, "%Y-%m-%d") + timedelta(days=forward_days)
+    exit_price = get_nearest_price(ticker, target_date.strftime("%Y-%m-%d"), window_days=5)
+    if not exit_price:
+        return None
+
+    return round(((exit_price / entry_price) - 1) * 100, 2)
+
+
+def _build_score_return_pairs(days=180, forward_period=30, score_field="lt_score"):
+    """Build a list of (score, forward_return) pairs from stored data."""
+    scores = get_all_scores_for_backtest(days)
+    if not scores:
+        return []
+
+    pairs = []
+    for s in scores:
+        score_val = s.get(score_field)
+        if score_val is None:
+            continue
+
+        scan_date = s.get("scan_date", "")
+        if not scan_date:
+            continue
+
+        # Parse date from timestamp
+        try:
+            date_str = scan_date[:10]  # "YYYY-MM-DD" from "YYYY-MM-DD HH:MM:SS"
+        except Exception:
+            continue
+
+        fwd_return = _get_forward_return(s["ticker"], date_str, forward_period)
+        if fwd_return is not None:
+            pairs.append({
+                "ticker": s["ticker"],
+                "date": date_str,
+                "score": score_val,
+                "forward_return": fwd_return,
+                "record": s,
+            })
+
+    return pairs
 
 
 def backtest_score_vs_returns(days=180, forward_period=30):
     """
-    Q1: Did my scoring predict actual returns?
-
-    Groups tickers by score quintile and compares average forward returns.
+    Q1: Did scores predict actual returns?
+    Sorts all score records into quintiles, measures average forward return per quintile.
     """
-    scores = get_all_scores_for_backtest(days)
-    if not scores:
-        return {"error": "No historical data. Run scans for a few weeks first.", "data": []}
-
-    # For each scored ticker, get the actual forward return
-    results = []
-    seen = set()  # Avoid duplicate ticker/date combos
-
-    for s in scores:
-        key = f"{s['ticker']}_{s['scan_date'][:10]}"
-        if key in seen:
-            continue
-        seen.add(key)
-
-        returns = fetch_forward_returns(s["ticker"], s["scan_date"], [forward_period])
-        if returns and returns.get(forward_period) is not None:
-            results.append({
-                "ticker": s["ticker"],
-                "scan_date": s["scan_date"],
-                "lt_score": s["lt_score"],
-                "opt_score": s["opt_score"],
-                "entry_price": s["entry_price"],
-                "forward_return": returns[forward_period],
-                "sec_score": s["sec_score"],
-                "sentiment_score": s["sentiment_score"],
-                "whale_score": s["whale_score"],
-            })
-
-    if not results:
-        return {"error": "Could not calculate forward returns. Need more historical data.", "data": []}
-
-    df = pd.DataFrame(results)
-
-    # Score quintile analysis
-    analysis = {}
-
-    for score_col, label in [("lt_score", "Long-Term Score"), ("opt_score", "Options Score")]:
-        try:
-            df["quintile"] = pd.qcut(df[score_col], q=5, labels=["Bottom 20%", "20-40%", "40-60%", "60-80%", "Top 20%"],
-                                      duplicates="drop")
-            quintile_stats = df.groupby("quintile").agg(
-                avg_return=("forward_return", "mean"),
-                median_return=("forward_return", "median"),
-                win_rate=("forward_return", lambda x: (x > 0).mean() * 100),
-                count=("forward_return", "count"),
-                avg_score=(score_col, "mean"),
-            ).round(2)
-
-            analysis[label] = quintile_stats.to_dict("index")
-        except Exception:
-            analysis[label] = {"error": "Not enough data for quintile analysis"}
-
-    # Correlation
-    for score_col, label in [("lt_score", "lt_correlation"), ("opt_score", "opt_correlation")]:
-        try:
-            corr = df[score_col].corr(df["forward_return"])
-            analysis[label] = round(corr, 4)
-        except Exception:
-            analysis[label] = None
-
-    # Overall stats
-    analysis["total_observations"] = len(results)
-    analysis["date_range"] = {
-        "start": min(r["scan_date"] for r in results),
-        "end": max(r["scan_date"] for r in results),
+    result = {
+        "lt_analysis": _quintile_analysis(days, forward_period, "lt_score"),
+        "opt_analysis": _quintile_analysis(days, forward_period, "opt_score"),
+        "forward_period_days": forward_period,
+        "lookback_days": days,
+        "timestamp": datetime.now().isoformat(),
     }
-    analysis["forward_period_days"] = forward_period
-    analysis["raw_data"] = results[:200]  # Cap for API response size
+    return result
 
-    return analysis
+
+def _quintile_analysis(days, forward_period, score_field):
+    """Run quintile analysis for a specific score type."""
+    pairs = _build_score_return_pairs(days, forward_period, score_field)
+
+    if len(pairs) < 10:
+        return {
+            "status": "insufficient_data",
+            "data_points": len(pairs),
+            "message": f"Need at least 10 data points, have {len(pairs)}. Run more scans or backfill first.",
+        }
+
+    # Sort by score and divide into quintiles
+    pairs.sort(key=lambda x: x["score"])
+    n = len(pairs)
+    quintile_size = n // 5
+
+    quintiles = {}
+    for q in range(5):
+        start = q * quintile_size
+        end = (q + 1) * quintile_size if q < 4 else n
+        bucket = pairs[start:end]
+
+        scores = [p["score"] for p in bucket]
+        returns = [p["forward_return"] for p in bucket]
+
+        quintiles[f"Q{q+1}"] = {
+            "avg_score": round(np.mean(scores), 1),
+            "min_score": round(min(scores), 1),
+            "max_score": round(max(scores), 1),
+            "avg_return": round(np.mean(returns), 2),
+            "median_return": round(np.median(returns), 2),
+            "win_rate": round(sum(1 for r in returns if r > 0) / len(returns) * 100, 1),
+            "count": len(bucket),
+        }
+
+    # Overall correlation
+    all_scores = [p["score"] for p in pairs]
+    all_returns = [p["forward_return"] for p in pairs]
+
+    correlation = round(float(np.corrcoef(all_scores, all_returns)[0, 1]), 3) if len(pairs) > 2 else 0
+
+    # Quintile spread: Q5 return - Q1 return
+    q5_return = quintiles["Q5"]["avg_return"]
+    q1_return = quintiles["Q1"]["avg_return"]
+    quintile_spread = round(q5_return - q1_return, 2)
+
+    # Is the score monotonically increasing? (ideal)
+    quintile_returns = [quintiles[f"Q{q+1}"]["avg_return"] for q in range(5)]
+    monotonic_violations = sum(1 for i in range(4) if quintile_returns[i+1] < quintile_returns[i])
+
+    return {
+        "status": "ok",
+        "score_type": score_field,
+        "data_points": len(pairs),
+        "correlation": correlation,
+        "quintile_spread": quintile_spread,
+        "monotonic_violations": monotonic_violations,
+        "is_predictive": correlation > 0.05 and quintile_spread > 1.0,
+        "quintiles": quintiles,
+        "interpretation": _interpret_quintile(correlation, quintile_spread, monotonic_violations),
+    }
+
+
+def _interpret_quintile(correlation, spread, violations):
+    """Human-readable interpretation of backtest results."""
+    parts = []
+    if correlation > 0.15:
+        parts.append(f"Strong positive correlation ({correlation:.3f}) — scores predict returns well.")
+    elif correlation > 0.05:
+        parts.append(f"Moderate positive correlation ({correlation:.3f}) — scores have some predictive power.")
+    elif correlation > -0.05:
+        parts.append(f"Weak/no correlation ({correlation:.3f}) — scores don't reliably predict returns.")
+    else:
+        parts.append(f"Negative correlation ({correlation:.3f}) — scores are inversely related to returns. Scoring needs revision.")
+
+    if spread > 5:
+        parts.append(f"Q5 outperformed Q1 by {spread:.1f}% — significant spread.")
+    elif spread > 1:
+        parts.append(f"Q5 outperformed Q1 by {spread:.1f}% — modest but positive spread.")
+    else:
+        parts.append(f"Q5-Q1 spread is only {spread:.1f}% — not meaningful.")
+
+    if violations == 0:
+        parts.append("Perfectly monotonic: higher scores = higher returns across all quintiles.")
+    elif violations <= 1:
+        parts.append(f"Mostly monotonic ({violations} violation) — generally higher scores = higher returns.")
+    else:
+        parts.append(f"Non-monotonic ({violations} violations) — score-return relationship is noisy.")
+
+    return " ".join(parts)
 
 
 def backtest_layer_attribution(days=180, forward_period=30):
     """
-    Q2: Which intelligence layers added real alpha?
-
-    Compares returns when each layer's signal was bullish vs bearish vs absent.
+    Q2: Which score components contributed most to predicting returns?
+    Measures correlation of each component with forward returns.
     """
-    scores = get_all_scores_for_backtest(days)
-    if not scores:
-        return {"error": "No historical data.", "data": []}
+    pairs = _build_score_return_pairs(days, forward_period, "lt_score")
+    if len(pairs) < 10:
+        return {"status": "insufficient_data", "data_points": len(pairs)}
 
-    results = []
-    seen = set()
+    # LT score components
+    lt_components = ["lt_rule_of_40", "lt_valuation", "lt_fcf_margin",
+                     "lt_trend", "lt_earnings_quality", "lt_discount_momentum"]
 
-    for s in scores:
-        key = f"{s['ticker']}_{s['scan_date'][:10]}"
-        if key in seen:
-            continue
-        seen.add(key)
+    lt_attribution = {}
+    for comp in lt_components:
+        comp_scores = []
+        returns = []
+        for p in pairs:
+            val = p["record"].get(comp)
+            if val is not None:
+                comp_scores.append(val)
+                returns.append(p["forward_return"])
 
-        returns = fetch_forward_returns(s["ticker"], s["scan_date"], [forward_period])
-        if returns and returns.get(forward_period) is not None:
-            results.append({**s, "forward_return": returns[forward_period]})
+        if len(comp_scores) > 5:
+            corr = float(np.corrcoef(comp_scores, returns)[0, 1])
+            if np.isnan(corr):
+                corr = 0
+            lt_attribution[comp] = {
+                "correlation": round(corr, 3),
+                "avg_value": round(np.mean(comp_scores), 1),
+                "data_points": len(comp_scores),
+                "predictive": abs(corr) > 0.05,
+            }
 
-    if not results:
-        return {"error": "No return data available.", "data": []}
+    # Options score components
+    opt_pairs = _build_score_return_pairs(days, forward_period, "opt_score")
+    opt_components = ["opt_earnings_catalyst", "opt_iv_context", "opt_directional",
+                      "opt_technical", "opt_liquidity", "opt_asymmetry"]
 
-    df = pd.DataFrame(results)
-    attribution = {}
+    opt_attribution = {}
+    for comp in opt_components:
+        comp_scores = []
+        returns = []
+        for p in opt_pairs:
+            val = p["record"].get(comp)
+            if val is not None:
+                comp_scores.append(val)
+                returns.append(p["forward_return"])
 
-    # SEC Intelligence
-    sec_bullish = df[df["sec_score"] > 0]
-    sec_bearish = df[df["sec_score"] < 0]
-    sec_neutral = df[df["sec_score"] == 0]
-    attribution["sec_filings"] = {
-        "bullish_signals": {
-            "count": len(sec_bullish),
-            "avg_return": round(sec_bullish["forward_return"].mean(), 2) if len(sec_bullish) > 0 else None,
-            "win_rate": round((sec_bullish["forward_return"] > 0).mean() * 100, 1) if len(sec_bullish) > 0 else None,
-        },
-        "bearish_signals": {
-            "count": len(sec_bearish),
-            "avg_return": round(sec_bearish["forward_return"].mean(), 2) if len(sec_bearish) > 0 else None,
-            "win_rate": round((sec_bearish["forward_return"] > 0).mean() * 100, 1) if len(sec_bearish) > 0 else None,
-        },
-        "no_signal": {
-            "count": len(sec_neutral),
-            "avg_return": round(sec_neutral["forward_return"].mean(), 2) if len(sec_neutral) > 0 else None,
-        },
-        "alpha": None,
+        if len(comp_scores) > 5:
+            corr = float(np.corrcoef(comp_scores, returns)[0, 1])
+            if np.isnan(corr):
+                corr = 0
+            opt_attribution[comp] = {
+                "correlation": round(corr, 3),
+                "avg_value": round(np.mean(comp_scores), 1),
+                "data_points": len(comp_scores),
+                "predictive": abs(corr) > 0.05,
+            }
+
+    # Also measure raw indicator correlations
+    raw_indicators = ["revenue_growth_pct", "gross_margin_pct", "ps_ratio", "pe_ratio",
+                      "fcf_m", "rsi", "bb_width", "vol_ratio", "iv_30d", "beta", "short_pct",
+                      "perf_3m", "pct_from_52w_high"]
+
+    indicator_correlations = {}
+    for ind in raw_indicators:
+        vals = []
+        rets = []
+        for p in pairs:
+            v = p["record"].get(ind)
+            if v is not None:
+                vals.append(v)
+                rets.append(p["forward_return"])
+        if len(vals) > 5:
+            corr = float(np.corrcoef(vals, rets)[0, 1])
+            if not np.isnan(corr):
+                indicator_correlations[ind] = round(corr, 3)
+
+    return {
+        "status": "ok",
+        "forward_period_days": forward_period,
+        "lookback_days": days,
+        "lt_component_attribution": lt_attribution,
+        "opt_component_attribution": opt_attribution,
+        "raw_indicator_correlations": indicator_correlations,
+        "data_points": len(pairs),
+        "timestamp": datetime.now().isoformat(),
     }
-    if len(sec_bullish) > 0 and len(sec_neutral) > 0:
-        attribution["sec_filings"]["alpha"] = round(
-            sec_bullish["forward_return"].mean() - sec_neutral["forward_return"].mean(), 2
-        )
-
-    # Insider Buying
-    insider_buy = df[df["insider_buys_30d"] > 0]
-    no_insider = df[df["insider_buys_30d"] == 0]
-    attribution["insider_buying"] = {
-        "with_insider_buys": {
-            "count": len(insider_buy),
-            "avg_return": round(insider_buy["forward_return"].mean(), 2) if len(insider_buy) > 0 else None,
-            "win_rate": round((insider_buy["forward_return"] > 0).mean() * 100, 1) if len(insider_buy) > 0 else None,
-        },
-        "no_insider_buys": {
-            "count": len(no_insider),
-            "avg_return": round(no_insider["forward_return"].mean(), 2) if len(no_insider) > 0 else None,
-        },
-        "alpha": None,
-    }
-    if len(insider_buy) > 0 and len(no_insider) > 0:
-        attribution["insider_buying"]["alpha"] = round(
-            insider_buy["forward_return"].mean() - no_insider["forward_return"].mean(), 2
-        )
-
-    # Sentiment
-    sent_bullish = df[df["sentiment_bull_pct"].notna() & (df["sentiment_bull_pct"] >= 65)]
-    sent_bearish = df[df["sentiment_bull_pct"].notna() & (df["sentiment_bull_pct"] <= 35)]
-    sent_none = df[df["sentiment_bull_pct"].isna()]
-    attribution["sentiment"] = {
-        "bullish": {
-            "count": len(sent_bullish),
-            "avg_return": round(sent_bullish["forward_return"].mean(), 2) if len(sent_bullish) > 0 else None,
-            "win_rate": round((sent_bullish["forward_return"] > 0).mean() * 100, 1) if len(sent_bullish) > 0 else None,
-        },
-        "bearish": {
-            "count": len(sent_bearish),
-            "avg_return": round(sent_bearish["forward_return"].mean(), 2) if len(sent_bearish) > 0 else None,
-        },
-        "not_available": {"count": len(sent_none)},
-        "alpha": None,
-    }
-    if len(sent_bullish) > 0 and len(sent_bearish) > 0:
-        attribution["sentiment"]["alpha"] = round(
-            sent_bullish["forward_return"].mean() - sent_bearish["forward_return"].mean(), 2
-        )
-
-    # Whale Flow (put/call ratio)
-    whale_bullish = df[df["pc_ratio"].notna() & (df["pc_ratio"] < 0.7)]
-    whale_bearish = df[df["pc_ratio"].notna() & (df["pc_ratio"] > 1.3)]
-    attribution["whale_flow"] = {
-        "bullish_flow": {
-            "count": len(whale_bullish),
-            "avg_return": round(whale_bullish["forward_return"].mean(), 2) if len(whale_bullish) > 0 else None,
-        },
-        "bearish_flow": {
-            "count": len(whale_bearish),
-            "avg_return": round(whale_bearish["forward_return"].mean(), 2) if len(whale_bearish) > 0 else None,
-        },
-        "alpha": None,
-    }
-    if len(whale_bullish) > 0 and len(whale_bearish) > 0:
-        attribution["whale_flow"]["alpha"] = round(
-            whale_bullish["forward_return"].mean() - whale_bearish["forward_return"].mean(), 2
-        )
-
-    attribution["total_observations"] = len(results)
-    attribution["forward_period_days"] = forward_period
-
-    return attribution
 
 
 def backtest_earnings_timing(days=180):
     """
-    Q3: What was the optimal entry timing vs. earnings?
-
-    Analyzes returns based on when you entered relative to earnings date.
+    Q3: What's the optimal entry window relative to earnings?
+    Groups scores by days-to-earnings bucket and measures forward returns.
     """
-    scores = get_all_scores_for_backtest(days)
-    if not scores:
-        return {"error": "No historical data.", "data": []}
+    pairs_14d = _build_score_return_pairs(days, 14, "opt_score")
+    pairs_30d = _build_score_return_pairs(days, 30, "opt_score")
 
-    # Filter to only entries with earnings dates
-    with_earnings = [s for s in scores if s.get("days_to_earnings") is not None and s["days_to_earnings"] > 0]
-
-    if not with_earnings:
-        return {"error": "No entries with earnings date data.", "data": []}
-
-    results = []
-    seen = set()
-
-    for s in with_earnings:
-        key = f"{s['ticker']}_{s['scan_date'][:10]}"
-        if key in seen:
-            continue
-        seen.add(key)
-
-        # Get returns at multiple horizons
-        returns = fetch_forward_returns(s["ticker"], s["scan_date"], [7, 14, 30])
-        if returns:
-            results.append({
-                "ticker": s["ticker"],
-                "scan_date": s["scan_date"],
-                "days_to_earnings": s["days_to_earnings"],
-                "opt_score": s["opt_score"],
-                "iv_30d": s["iv_30d"],
-                "return_7d": returns.get(7),
-                "return_14d": returns.get(14),
-                "return_30d": returns.get(30),
-            })
-
-    if not results:
-        return {"error": "Could not match earnings entries with returns.", "data": []}
-
-    df = pd.DataFrame(results)
-
-    # Bucket by days to earnings
-    buckets = {
-        "1-7 days": df[(df["days_to_earnings"] >= 1) & (df["days_to_earnings"] <= 7)],
-        "8-14 days": df[(df["days_to_earnings"] >= 8) & (df["days_to_earnings"] <= 14)],
-        "15-30 days": df[(df["days_to_earnings"] >= 15) & (df["days_to_earnings"] <= 30)],
-        "31-45 days": df[(df["days_to_earnings"] >= 31) & (df["days_to_earnings"] <= 45)],
-    }
-
-    timing = {}
-    for label, bucket in buckets.items():
-        if len(bucket) == 0:
-            timing[label] = {"count": 0}
-            continue
-
-        timing[label] = {
-            "count": len(bucket),
-            "avg_return_7d": round(bucket["return_7d"].dropna().mean(), 2) if bucket["return_7d"].notna().any() else None,
-            "avg_return_14d": round(bucket["return_14d"].dropna().mean(), 2) if bucket["return_14d"].notna().any() else None,
-            "avg_return_30d": round(bucket["return_30d"].dropna().mean(), 2) if bucket["return_30d"].notna().any() else None,
-            "avg_iv": round(bucket["iv_30d"].dropna().mean(), 1) if bucket["iv_30d"].notna().any() else None,
-            "avg_opt_score": round(bucket["opt_score"].mean(), 1),
-            "win_rate_14d": round((bucket["return_14d"].dropna() > 0).mean() * 100, 1) if bucket["return_14d"].notna().any() else None,
+    def _analyze_by_earnings_window(pairs, forward_label):
+        buckets = {
+            "1-4d pre": [],
+            "5-14d pre": [],
+            "15-30d pre": [],
+            "30+d or no earnings": [],
         }
 
-    # Best entry window
-    best_window = None
-    best_return = -999
-    for label, stats in timing.items():
-        if stats.get("avg_return_14d") is not None and stats["avg_return_14d"] > best_return:
-            best_return = stats["avg_return_14d"]
-            best_window = label
+        for p in pairs:
+            dte = p["record"].get("days_to_earnings")
+            if dte is not None and 1 <= dte <= 4:
+                buckets["1-4d pre"].append(p)
+            elif dte is not None and 5 <= dte <= 14:
+                buckets["5-14d pre"].append(p)
+            elif dte is not None and 15 <= dte <= 30:
+                buckets["15-30d pre"].append(p)
+            else:
+                buckets["30+d or no earnings"].append(p)
+
+        result = {}
+        for bucket_name, bucket_pairs in buckets.items():
+            if bucket_pairs:
+                returns = [p["forward_return"] for p in bucket_pairs]
+                result[bucket_name] = {
+                    "avg_return": round(np.mean(returns), 2),
+                    "median_return": round(np.median(returns), 2),
+                    "win_rate": round(sum(1 for r in returns if r > 0) / len(returns) * 100, 1),
+                    "count": len(returns),
+                    "std_dev": round(float(np.std(returns)), 2),
+                }
+            else:
+                result[bucket_name] = {"count": 0}
+
+        return result
 
     return {
-        "timing_buckets": timing,
-        "best_entry_window": best_window,
-        "best_avg_14d_return": best_return if best_window else None,
-        "total_earnings_plays": len(results),
-        "raw_data": results[:100],
+        "status": "ok",
+        "lookback_days": days,
+        "forward_14d": _analyze_by_earnings_window(pairs_14d, "14d"),
+        "forward_30d": _analyze_by_earnings_window(pairs_30d, "30d"),
+        "data_points_14d": len(pairs_14d),
+        "data_points_30d": len(pairs_30d),
+        "timestamp": datetime.now().isoformat(),
     }
 
 
@@ -339,6 +330,179 @@ def run_full_backtest(days=180, forward_period=30):
         "score_vs_returns": backtest_score_vs_returns(days, forward_period),
         "layer_attribution": backtest_layer_attribution(days, forward_period),
         "earnings_timing": backtest_earnings_timing(days),
-        "generated_at": datetime.now().isoformat(),
-        "params": {"lookback_days": days, "forward_period": forward_period},
+        "metadata": {
+            "lookback_days": days,
+            "forward_period": forward_period,
+            "timestamp": datetime.now().isoformat(),
+        }
+    }
+
+
+# ─────────────────────────────────────────────
+# SELF-CALIBRATION ENGINE
+# ─────────────────────────────────────────────
+
+def calibrate_weights(days=180, forward_period=30, dry_run=False):
+    """
+    Auto-adjust scoring weights based on component-return correlations.
+
+    Algorithm:
+    1. Measure each component's correlation with forward returns
+    2. Components with higher correlation get more weight
+    3. Components with negative correlation get penalized
+    4. Normalize so total still sums to 100
+
+    Returns the proposed new weights and their backtest metrics.
+    """
+    attribution = backtest_layer_attribution(days, forward_period)
+    if attribution.get("status") != "ok":
+        return {"status": "insufficient_data", "message": "Need more backtest data to calibrate."}
+
+    # Current weights
+    from core.scanner import get_weights, set_weights, DEFAULT_LT_WEIGHTS, DEFAULT_OPT_WEIGHTS
+    current = get_weights()
+
+    results = {}
+
+    # Calibrate LT weights
+    lt_attr = attribution.get("lt_component_attribution", {})
+    if lt_attr:
+        lt_new = _compute_new_weights(
+            current_weights=current["lt"],
+            attributions=lt_attr,
+            default_weights=DEFAULT_LT_WEIGHTS,
+            component_prefix="lt_",
+        )
+        results["lt_weights"] = {
+            "current": current["lt"],
+            "proposed": lt_new["weights"],
+            "changes": lt_new["changes"],
+            "reason": lt_new["reason"],
+        }
+
+    # Calibrate options weights
+    opt_attr = attribution.get("opt_component_attribution", {})
+    if opt_attr:
+        opt_new = _compute_new_weights(
+            current_weights=current["opt"],
+            attributions=opt_attr,
+            default_weights=DEFAULT_OPT_WEIGHTS,
+            component_prefix="opt_",
+        )
+        results["opt_weights"] = {
+            "current": current["opt"],
+            "proposed": opt_new["weights"],
+            "changes": opt_new["changes"],
+            "reason": opt_new["reason"],
+        }
+
+    # Apply if not dry run
+    if not dry_run:
+        if "lt_weights" in results:
+            new_lt = results["lt_weights"]["proposed"]
+            set_weights(lt_weights=new_lt)
+
+            # Run backtest with new weights to measure improvement
+            new_backtest = _quintile_analysis(days, forward_period, "lt_score")
+            save_score_weights(
+                "lt", new_lt,
+                correlation=new_backtest.get("correlation"),
+                quintile_spread=new_backtest.get("quintile_spread"),
+                data_points=new_backtest.get("data_points"),
+                notes=f"Auto-calibrated from {days}d backtest",
+            )
+            results["lt_weights"]["backtest_after"] = {
+                "correlation": new_backtest.get("correlation"),
+                "quintile_spread": new_backtest.get("quintile_spread"),
+            }
+
+        if "opt_weights" in results:
+            new_opt = results["opt_weights"]["proposed"]
+            set_weights(opt_weights=new_opt)
+            save_score_weights(
+                "opt", new_opt,
+                data_points=attribution.get("data_points"),
+                notes=f"Auto-calibrated from {days}d backtest",
+            )
+
+    results["status"] = "calibrated" if not dry_run else "dry_run"
+    results["timestamp"] = datetime.now().isoformat()
+    return results
+
+
+def _compute_new_weights(current_weights, attributions, default_weights, component_prefix):
+    """
+    Compute new weights from attributions.
+
+    Strategy:
+    - Start from current weights
+    - Boost components with positive correlation (up to 2x)
+    - Reduce components with negative/zero correlation (down to 0.3x)
+    - Normalize to sum to 100
+    - Limit each adjustment to ±30% of current to avoid wild swings
+    """
+    raw_weights = {}
+    changes = {}
+
+    for comp_name, current_w in current_weights.items():
+        attr_key = f"{component_prefix}{comp_name}"
+        attr = attributions.get(attr_key, {})
+        corr = attr.get("correlation", 0)
+
+        # Compute multiplier based on correlation
+        if corr > 0.1:
+            mult = 1.0 + min(0.3, corr * 2)  # max +30%
+        elif corr > 0.02:
+            mult = 1.0 + corr * 5  # slight boost
+        elif corr > -0.02:
+            mult = 1.0  # no change
+        elif corr > -0.1:
+            mult = 1.0 + corr * 3  # slight reduction
+        else:
+            mult = max(0.7, 1.0 + corr * 2)  # max -30%
+
+        new_w = current_w * mult
+        raw_weights[comp_name] = new_w
+        changes[comp_name] = {
+            "correlation": corr,
+            "multiplier": round(mult, 3),
+            "old": current_w,
+            "new_raw": round(new_w, 1),
+        }
+
+    # Normalize to sum to 100
+    total = sum(raw_weights.values())
+    if total > 0:
+        normalized = {k: round(v / total * 100, 1) for k, v in raw_weights.items()}
+    else:
+        normalized = dict(default_weights)
+
+    # Ensure minimum weight of 3 for any component
+    for k in normalized:
+        if normalized[k] < 3:
+            normalized[k] = 3.0
+
+    # Re-normalize after minimums
+    total = sum(normalized.values())
+    normalized = {k: round(v / total * 100, 1) for k, v in normalized.items()}
+
+    for comp_name in changes:
+        changes[comp_name]["new_final"] = normalized[comp_name]
+
+    # Build reason string
+    boosted = [k for k, v in changes.items() if v["multiplier"] > 1.05]
+    reduced = [k for k, v in changes.items() if v["multiplier"] < 0.95]
+
+    reason_parts = []
+    if boosted:
+        reason_parts.append(f"Boosted: {', '.join(boosted)}")
+    if reduced:
+        reason_parts.append(f"Reduced: {', '.join(reduced)}")
+    if not boosted and not reduced:
+        reason_parts.append("No significant changes — current weights are reasonable.")
+
+    return {
+        "weights": normalized,
+        "changes": changes,
+        "reason": " | ".join(reason_parts),
     }
