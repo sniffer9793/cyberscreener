@@ -99,8 +99,9 @@ async function doLogin(){
 
 async function loadDash(){
   $('#app').innerHTML='<div style="padding:60px;text-align:center;color:#64748b">Loading...</div>';
-  const[s,l,b]=await Promise.all([api('/stats'),api('/scores/latest?limit=50'),api('/backtest?days=180&forward_period=30')]);
-  if(!s){showLogin();return}
+  const s=await api('/stats');
+  const l=await api('/scores/latest?limit=50');
+  const b=await api('/backtest?days=180&forward_period=30');
   D.stats=s;D.latest=l;D.backtest=b;render();
 }
 

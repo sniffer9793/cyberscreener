@@ -381,19 +381,6 @@ def scan_status():
     return _scan_status
 
 
-@app.get("/scores/{ticker}")
-def get_ticker_scores(ticker: str, days: int = Query(90, ge=7, le=365)):
-    """Get historical scores for a specific ticker."""
-    history = get_score_history(ticker.upper(), days)
-    if not history:
-        return {"ticker": ticker.upper(), "history": [], "message": "No data found. Run some scans first."}
-    return {
-        "ticker": ticker.upper(),
-        "history": history,
-        "data_points": len(history),
-    }
-
-
 @app.get("/scores/latest")
 def get_latest_scores(limit: int = Query(50, ge=1, le=100)):
     """Get the most recent scan results."""
@@ -413,6 +400,19 @@ def get_latest_scores(limit: int = Query(50, ge=1, le=100)):
         "scan_id": scan["id"],
         "scan_timestamp": scan["timestamp"],
         "results": [dict(r) for r in rows],
+    }
+
+
+@app.get("/scores/{ticker}")
+def get_ticker_scores(ticker: str, days: int = Query(90, ge=7, le=365)):
+    """Get historical scores for a specific ticker."""
+    history = get_score_history(ticker.upper(), days)
+    if not history:
+        return {"ticker": ticker.upper(), "history": [], "message": "No data found. Run some scans first."}
+    return {
+        "ticker": ticker.upper(),
+        "history": history,
+        "data_points": len(history),
     }
 
 
