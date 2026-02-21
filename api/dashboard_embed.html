@@ -43,7 +43,7 @@ body{background:#0a0e17;color:#e2e8f0;font-family:'DM Sans',-apple-system,sans-s
 <body>
 <div id="app"><div style="padding:60px;text-align:center;color:#64748b">Loading CyberScreener...</div></div>
 <script>
-var currentTab='overview',D={},selTk=null,tkH=null,btP=30;
+var currentTab='overview',D={},selTk=null,tkH=null,btP=30,playsData=null,playsTk=null;
 
 function qs(s){return document.querySelector(s)}
 
@@ -55,8 +55,8 @@ function met(l,v,c,sub){return'<div class="metric"><div class="metric-label">'+l
 
 function render(){
   var s=D.stats||{};
-  qs('#app').innerHTML='<div class="hdr"><div style="display:flex;align-items:center;gap:12px"><span style="font-size:22px">🛡️</span><div><div style="font-size:18px;font-weight:800;color:#00e5a0">CyberScreener</div><div style="font-size:10px;color:#64748b;letter-spacing:2px;text-transform:uppercase">Investment Intelligence</div></div></div><div style="display:flex;align-items:center;gap:12px"><span class="dot"></span><span class="dim" style="font-size:11px">Online</span><button class="btn" id="sb" onclick="doScan()">▶ Run Scan</button></div></div><nav class="tabs"><button class="tab '+(currentTab==='overview'?'on':'')+'" onclick="currentTab=\'overview\';render()">◉ Overview</button><button class="tab '+(currentTab==='scores'?'on':'')+'" onclick="currentTab=\'scores\';render()">◆ Scores</button><button class="tab '+(currentTab==='backtest'?'on':'')+'" onclick="currentTab=\'backtest\';render()">◈ Backtest</button></nav><div class="main" id="ct"></div><footer style="padding:16px 28px;border-top:1px solid #1a2235;text-align:center"><span style="font-size:10px;color:#64748b">CyberScreener v2.0 — Not financial advice.</span></footer>';
-  if(currentTab==='overview')rOverview();else if(currentTab==='scores')rScores();else rBacktest();
+  qs('#app').innerHTML='<div class="hdr"><div style="display:flex;align-items:center;gap:12px"><span style="font-size:22px">🛡️</span><div><div style="font-size:18px;font-weight:800;color:#00e5a0">CyberScreener</div><div style="font-size:10px;color:#64748b;letter-spacing:2px;text-transform:uppercase">Investment Intelligence</div></div></div><div style="display:flex;align-items:center;gap:12px"><span class="dot"></span><span class="dim" style="font-size:11px">Online</span><button class="btn" id="sb" onclick="doScan()">▶ Run Scan</button></div></div><nav class="tabs"><button class="tab '+(currentTab==='overview'?'on':'')+'" onclick="currentTab=\'overview\';render()">◉ Overview</button><button class="tab '+(currentTab==='scores'?'on':'')+'" onclick="currentTab=\'scores\';render()">◆ Scores</button><button class="tab '+(currentTab==='plays'?'on':'')+'" onclick="currentTab=\'plays\';render()">⚡ Plays</button><button class="tab '+(currentTab==='backtest'?'on':'')+'" onclick="currentTab=\'backtest\';render()">◈ Backtest</button></nav><div class="main" id="ct"></div><footer style="padding:16px 28px;border-top:1px solid #1a2235;text-align:center"><span style="font-size:10px;color:#64748b">CyberScreener v2.0 — Not financial advice.</span></footer>';
+  if(currentTab==='overview')rOverview();else if(currentTab==='scores')rScores();else if(currentTab==='plays')rPlays();else rBacktest();
 }
 
 function rOverview(){
@@ -115,6 +115,68 @@ function rBacktest(){
   if(lrs.length){var mx2=1;for(var i=0;i<lrs.length;i++){var av=Math.abs(lrs[i].a);if(av>mx2)mx2=av}h+='<div class="card"><div class="sec-title">Layer Alpha</div><div class="sec-sub">Bullish vs absent signal return diff</div>';for(var i=0;i<lrs.length;i++){var d2=lrs[i];var c=d2.a>=0?'#00e5a0':'#ff3b5c';h+='<div style="display:grid;grid-template-columns:80px 1fr 60px;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #1a2235"><span class="mid" style="font-size:12px">'+d2.n+'</span><div style="height:12px;background:'+c+';opacity:0.75;border-radius:4px;width:'+Math.max(Math.abs(d2.a)/mx2*60,4)+'%"></div><span class="mono" style="font-size:12px;color:'+c+';font-weight:700;text-align:right">'+(d2.a>0?'+':'')+d2.a.toFixed(1)+'%</span></div>'}h+='</div>'}
   qs('#ct').innerHTML=h;
 }
+
+function rPlays(){
+  var res=(D.latest&&D.latest.results)?D.latest.results:[];
+  var opt=res.slice().sort(function(a,b){return b.opt_score-a.opt_score});
+  // Ticker sidebar
+  var list='';
+  for(var i=0;i<opt.length;i++){var r=opt[i];list+='<div class="tkr '+(playsTk===r.ticker?'sel':'')+'" onclick="loadPlays(\''+r.ticker+'\')"><span class="row-tk">'+r.ticker+'</span><span class="dim" style="font-size:11px">$'+r.price+'</span><span class="badge" style="background:'+sc(r.opt_score,40,25)+'18;color:'+sc(r.opt_score,40,25)+';border:1px solid '+sc(r.opt_score,40,25)+'30">'+r.opt_score+'</span></div>'}
+
+  var det='';
+  if(!playsTk){
+    det='<div class="card" style="padding:40px;text-align:center"><div style="font-size:36px;margin-bottom:12px">⚡</div><div style="font-size:14px;font-weight:600;margin-bottom:8px">Options Play Builder</div><div class="dim" style="font-size:12px;max-width:400px;margin:0 auto">Select a ticker to generate real-time options play recommendations with strike prices, expiries, and risk/reward profiles.</div></div>';
+  }else if(!playsData){
+    det='<div class="card" style="padding:40px;text-align:center"><div style="font-size:14px;color:#64748b">⟳ Loading options chain for '+playsTk+'...</div><div style="font-size:11px;color:#475569;margin-top:8px">Fetching live data from market...</div></div>';
+  }else if(playsData.error && (!playsData.plays || playsData.plays.length===0)){
+    det='<div class="card" style="padding:24px"><div class="sec-title">'+playsTk+'</div><div style="margin-top:12px;padding:16px;background:#1a0a0a;border:1px solid #ff3b5c30;border-radius:8px"><span style="color:#ff3b5c;font-size:13px">⚠ '+playsData.error+'</span></div></div>';
+  }else{
+    var p=playsData;
+    // Header with key metrics
+    det='<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="sec-title">'+p.ticker+' Play Builder</div><div class="sec-sub">'+p.play_count+' play'+(p.play_count!==1?'s':'')+' generated · '+new Date(p.timestamp).toLocaleTimeString()+'</div></div><div style="text-align:right"><div style="font-size:24px;font-weight:800;font-family:JetBrains Mono,monospace">$'+p.price+'</div></div></div>';
+    // Metrics row
+    det+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));margin-top:12px">';
+    det+=met('RSI',p.rsi!=null?p.rsi:'—',p.rsi<30?'#00e5a0':p.rsi>70?'#ff3b5c':'#ffb020');
+    det+=met('IV 30d',p.iv_30d!=null?p.iv_30d+'%':'—',p.iv_30d>50?'#ff3b5c':p.iv_30d>30?'#ffb020':'#00e5a0');
+    det+=met('Earnings',p.days_to_earnings!=null?p.days_to_earnings+'d':'—',p.days_to_earnings!=null&&p.days_to_earnings<=14?'#00e5a0':'#64748b');
+    det+=met('Beta',p.beta!=null?p.beta:'—');
+    det+=met('Vol Ratio',p.vol_ratio!=null?p.vol_ratio+'x':'—',p.vol_ratio>2?'#00e5a0':p.vol_ratio>1.5?'#ffb020':'#64748b');
+    det+=met('52w Δ',p.pct_from_52w_high!=null?p.pct_from_52w_high+'%':'—',p.pct_from_52w_high<-20?'#00e5a0':p.pct_from_52w_high<-5?'#ffb020':'#64748b');
+    det+='</div></div>';
+
+    // Individual plays
+    if(p.plays && p.plays.length>0){
+      for(var i=0;i<p.plays.length;i++){
+        var pl=p.plays[i];
+        var dC=pl.direction.indexOf('Bullish')>=0?'#00e5a0':pl.direction.indexOf('Bearish')>=0?'#ff3b5c':'#3b82f6';
+        det+='<div class="card" style="border-left:3px solid '+dC+'">';
+        // Play header
+        det+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div><span style="font-size:15px;font-weight:800;color:'+dC+'">'+pl.emoji+' '+pl.strategy+'</span><span class="badge" style="margin-left:8px;background:'+dC+'18;color:'+dC+';border:1px solid '+dC+'30;font-size:10px">'+pl.direction+'</span></div><div style="text-align:right"><div class="mono" style="font-size:14px;font-weight:700;color:#e2e8f0">'+pl.action+'</div><div class="dim" style="font-size:11px">Exp: '+pl.expiry+' ('+pl.dte+'d)</div></div></div>';
+        // Play details grid
+        det+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">';
+        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Entry</div><div class="mono" style="font-size:14px;font-weight:700;color:#e2e8f0">$'+pl.entry_price+'</div></div>';
+        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Breakeven</div><div class="mono" style="font-size:14px;font-weight:700;color:#e2e8f0">'+pl.breakeven+'</div></div>';
+        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Max Loss</div><div class="mono" style="font-size:14px;font-weight:700;color:#ff3b5c">$'+pl.max_loss+'</div></div>';
+        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Max Gain</div><div class="mono" style="font-size:14px;font-weight:700;color:#00e5a0">'+pl.max_gain+'</div></div>';
+        if(pl.bid!=null){det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Bid/Ask</div><div class="mono" style="font-size:13px;color:#94a3b8">$'+pl.bid+' / $'+pl.ask+'</div></div>';}
+        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">IV</div><div class="mono" style="font-size:14px;font-weight:700;color:#ffb020">'+pl.iv+'%</div></div>';
+        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Volume</div><div class="mono" style="font-size:13px;color:#94a3b8">'+pl.volume.toLocaleString()+'</div></div>';
+        det+='<div style="padding:8px;background:#0a0e17;border-radius:6px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Open Interest</div><div class="mono" style="font-size:13px;color:#94a3b8">'+pl.open_interest.toLocaleString()+'</div></div>';
+        det+='</div>';
+        // Rationale & risk
+        det+='<div style="margin-top:10px;padding:10px;background:#0a0e1780;border-radius:6px;border:1px solid #1a2235"><div style="font-size:11px;color:#94a3b8;line-height:1.5">'+pl.rationale+'</div></div>';
+        det+='<div style="margin-top:6px;padding:8px 10px;background:#1a0a0a40;border-radius:6px;border:1px solid #ff3b5c15"><div style="font-size:10px;color:#ff3b5c80">⚠ '+pl.risk_notes+'</div></div>';
+        det+='</div>';
+      }
+    }else{
+      det+='<div class="card" style="padding:24px;text-align:center"><div class="dim">No plays generated — may lack earnings catalyst or sufficient IV.</div></div>';
+    }
+  }
+
+  qs('#ct').innerHTML='<div style="display:flex;gap:16px;min-height:60vh"><div class="card ticker-list" style="padding:12px"><div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;margin-bottom:8px"><span class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:1px">By Opt Score</span></div>'+list+'</div><div style="flex:1">'+det+'</div></div>';
+}
+
+function loadPlays(t){playsTk=t;playsData=null;rPlays();F('/plays/'+t).then(function(d){playsData=d;rPlays()})}
 
 function chgP(p){btP=p;qs('#ct').innerHTML='<div style="padding:40px;text-align:center;color:#64748b">Recalculating...</div>';F('/backtest?days=180&forward_period='+p).then(function(b){D.backtest=b;rBacktest()})}
 
