@@ -22,7 +22,25 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import time
+import logging
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
+
+# Intel layers — imported with fallback so scanner still works if intel fails
+try:
+    from intel.sec_filings import analyze_sec_intel
+    SEC_AVAILABLE = True
+except ImportError:
+    SEC_AVAILABLE = False
+    logger.warning("SEC intel layer not available")
+
+try:
+    from intel.sentiment import analyze_sentiment
+    SENTIMENT_AVAILABLE = True
+except ImportError:
+    SENTIMENT_AVAILABLE = False
+    logger.warning("Sentiment layer not available")
 
 # ─────────────────────────────────────────────
 # TICKER UNIVERSE
@@ -260,6 +278,7 @@ def fetch_ticker_data(ticker):
             "unusual_calls": whale_data.get("unusual_calls", 0),
             "unusual_puts": whale_data.get("unusual_puts", 0),
             "top_flow": whale_data.get("top_flow", []),
+            "_ticker_obj": t,  # Pass through for intel layers (not stored in DB)
         }
     except Exception as e:
         return None
@@ -1254,8 +1273,8 @@ def generate_plays(ticker, price, chains, days_to_earnings=None, rsi=50, iv_30d=
 # SCAN RUNNER
 # ─────────────────────────────────────────────
 
-def run_scan(tickers=None, enable_sec=True, callback=None):
-    """Run a full scan with v2 scoring. Returns list of scored results."""
+def run_scan(tickers=None, enable_sec=True, enable_sentiment=True, callback=None):
+    """Run a full scan with v2 scoring + intel layers. Returns list of scored results."""
     if tickers is None:
         tickers = ALL_TICKERS
 
@@ -1282,13 +1301,60 @@ def run_scan(tickers=None, enable_sec=True, callback=None):
             for key, val in opt_breakdown.items():
                 data[f"opt_{key}"] = val.get("points", 0)
 
-            data["sec_intel"] = None
-            data["sentiment"] = None
+            # ── Intel Layer: SEC / Insider ──
+            ticker_obj = data.pop("_ticker_obj", None)
+
+            if enable_sec and SEC_AVAILABLE and ticker_obj:
+                try:
+                    sec = analyze_sec_intel(ticker_obj, ticker)
+                    data["sec_score"] = sec.get("sec_score", 0)
+                    data["sec_signals"] = sec.get("sec_signals", [])
+                    data["insider_buys_30d"] = sec.get("insider_buys_30d", 0)
+                    data["insider_sells_30d"] = sec.get("insider_sells_30d", 0)
+                    data["analyst_consensus"] = sec.get("analyst_consensus")
+                    data["sec_intel"] = sec
+                except Exception as e:
+                    logger.warning(f"SEC intel failed for {ticker}: {e}")
+                    data["sec_score"] = 0
+                    data["sec_intel"] = None
+            else:
+                data["sec_score"] = 0
+                data["sec_intel"] = None
+
+            # ── Intel Layer: Sentiment ──
+            if enable_sentiment and SENTIMENT_AVAILABLE and ticker_obj:
+                try:
+                    sent = analyze_sentiment(ticker_obj, ticker)
+                    data["sentiment_score"] = sent.get("sentiment_score", 0)
+                    data["sentiment_bull_pct"] = sent.get("sentiment_bull_pct")
+                    data["sentiment_signals"] = sent.get("sentiment_signals", [])
+                    data["sentiment_sources"] = sent.get("sentiment_sources", {})
+                    data["sentiment"] = sent
+                except Exception as e:
+                    logger.warning(f"Sentiment failed for {ticker}: {e}")
+                    data["sentiment_score"] = 0
+                    data["sentiment"] = None
+            else:
+                data["sentiment_score"] = 0
+                data["sentiment"] = None
+
             # Whale flow is already in data from fetch_ticker_data
-            # Add whale signals to the reasons lists for the dashboard
+            # Combine all intel signals into opt_reasons for dashboard
+            all_intel_signals = []
             whale_sigs = data.get("whale_signals", [])
             if whale_sigs:
-                data["opt_reasons"] = opt_reasons + whale_sigs
+                all_intel_signals.extend(whale_sigs)
+            sec_sigs = data.get("sec_signals", [])
+            if sec_sigs:
+                all_intel_signals.extend(sec_sigs)
+            sent_sigs = data.get("sentiment_signals", [])
+            if sent_sigs:
+                all_intel_signals.extend(sent_sigs)
+
+            if all_intel_signals:
+                data["opt_reasons"] = opt_reasons + all_intel_signals
+                data["lt_reasons"] = lt_reasons + [s for s in sec_sigs if "insider" in s.lower() or "analyst" in s.lower()]
+
             results.append(data)
 
         time.sleep(0.15)
