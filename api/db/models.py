@@ -19,9 +19,58 @@ def get_db():
     return conn
 
 
+def _migrate_scores_table(conn):
+    """Add v2 columns to existing scores table if they don't exist."""
+    # Get existing columns
+    try:
+        cursor = conn.execute("PRAGMA table_info(scores)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+    except Exception:
+        return  # Table doesn't exist yet, CREATE TABLE will handle it
+
+    if not existing_cols:
+        return
+
+    # New v2 columns to add
+    new_columns = [
+        ("lt_rule_of_40", "REAL"),
+        ("lt_valuation", "REAL"),
+        ("lt_fcf_margin", "REAL"),
+        ("lt_trend", "REAL"),
+        ("lt_earnings_quality", "REAL"),
+        ("lt_discount_momentum", "REAL"),
+        ("opt_earnings_catalyst", "REAL"),
+        ("opt_iv_context", "REAL"),
+        ("opt_directional", "REAL"),
+        ("opt_technical", "REAL"),
+        ("opt_liquidity", "REAL"),
+        ("opt_asymmetry", "REAL"),
+        ("operating_margin_pct", "REAL"),
+        ("ev_revenue", "REAL"),
+        ("fcf_margin_pct", "REAL"),
+        ("revenue_b", "REAL"),
+        ("iv_rank", "REAL"),
+        ("perf_1m", "REAL"),
+        ("lt_breakdown", "TEXT"),
+        ("opt_breakdown", "TEXT"),
+    ]
+
+    for col_name, col_type in new_columns:
+        if col_name not in existing_cols:
+            try:
+                conn.execute(f"ALTER TABLE scores ADD COLUMN {col_name} {col_type}")
+            except Exception:
+                pass  # Column might already exist from a partial migration
+
+    conn.commit()
+
+
 def init_db():
-    """Initialize all tables."""
+    """Initialize all tables + migrate schema if needed."""
     conn = get_db()
+
+    # ── Schema migration: add new v2 columns to existing scores table ──
+    _migrate_scores_table(conn)
 
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS scans (
