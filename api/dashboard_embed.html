@@ -4,252 +4,261 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CyberScreener</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0a0e17;color:#e2e8f0;font-family:'DM Sans',-apple-system,sans-serif}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0f1520}::-webkit-scrollbar-thumb{background:#243049;border-radius:3px}
-code{font-family:'JetBrains Mono',monospace;background:#141c2b;padding:2px 6px;border-radius:4px;font-size:12px}
 .pulse{animation:pulse 1.5s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+.svgtip{position:absolute;background:#0f1520;border:1px solid #243049;border-radius:6px;padding:6px 10px;font-size:11px;color:#e2e8f0;pointer-events:none;z-index:10;font-family:'JetBrains Mono',monospace;white-space:nowrap}
 </style>
 </head>
 <body>
-<div id="root"><div style="padding:60px;text-align:center;color:#64748b;background:#0a0e17;min-height:100vh;font-family:sans-serif"><div style="font-size:14px;margin-bottom:8px">Loading CyberScreener...</div><div id="ldst" style="font-size:11px;color:#475569">Waiting for scripts...</div></div></div>
-<script>
-window._sl=[];window._errs=[];
-window.onerror=function(m,s,l,c,e){
-  window._errs.push(m);
-  var el=document.createElement('div');
-  el.style.cssText='padding:40px;color:#ff3b5c;background:#0a0e17;min-height:100vh;font-family:monospace;font-size:13px';
-  el.innerHTML='<h2>Runtime Error</h2><pre style="margin-top:12px;color:#e2e8f0;white-space:pre-wrap">'+m+'\nLine: '+l+' Col: '+c+'\nSrc: '+(s||'inline')+'\nLoaded: '+window._sl.join(', ')+'\nAll errors: '+window._errs.join(' | ')+'\nwindow.Recharts type: '+typeof window.Recharts+'\nwindow.recharts type: '+typeof window.recharts+'</pre>';
-  document.body.appendChild(el);
-  return true;
-};
-</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" onload="window._sl.push('react')" onerror="document.getElementById('ldst').textContent='FAILED: React'"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" onload="window._sl.push('react-dom')" onerror="document.getElementById('ldst').textContent='FAILED: ReactDOM'"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js" onload="window._sl.push('babel')" onerror="document.getElementById('ldst').textContent='FAILED: Babel'"></script>
-<script src="https://unpkg.com/recharts@2.15.0/umd/Recharts.js" onload="window._sl.push('recharts-unpkg')" onerror="document.getElementById('ldst').textContent='FAILED: Recharts unpkg'"></script>
-<script>
-// Detect Recharts global after script load
-var _RG=window.Recharts||window.recharts;
-if(!_RG){var _ks=Object.keys(window).filter(function(k){return /rechart/i.test(k)});if(_ks.length)_RG=window[_ks[0]]}
-if(_RG){window.Recharts=_RG;document.getElementById('ldst').textContent='All loaded ✓ Recharts='+typeof _RG}
-else{document.getElementById('ldst').textContent='Recharts NOT found. Keys with chart: '+Object.keys(window).filter(function(k){return /chart/i.test(k)}).join(',')}
-</script>
+<div id="root"><div style="padding:60px;text-align:center;color:#64748b">Loading CyberScreener...</div></div>
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef}=React;
-const _RC=window.Recharts||{};
-const LineChart=_RC.LineChart,Line=_RC.Line,BarChart=_RC.BarChart,Bar=_RC.Bar,XAxis=_RC.XAxis,YAxis=_RC.YAxis,Tooltip=_RC.Tooltip,ResponsiveContainer=_RC.ResponsiveContainer,CartesianGrid=_RC.CartesianGrid,Cell=_RC.Cell,Legend=_RC.Legend,Area=_RC.Area,AreaChart=_RC.AreaChart;
-
 const C={bg:"#0a0e17",bgCard:"#0f1520",bgHover:"#141c2b",border:"#1a2235",borderLight:"#243049",green:"#00e5a0",greenDim:"#00e5a030",red:"#ff3b5c",redDim:"#ff3b5c30",amber:"#ffb020",amberDim:"#ffb02030",blue:"#3b82f6",blueDim:"#3b82f620",purple:"#a855f7",text:"#e2e8f0",textDim:"#64748b",textMid:"#94a3b8"};
 const mono="'JetBrains Mono',monospace";
 
 async function api(path,opts){try{const r=await fetch(path,opts);if(!r.ok)throw new Error(r.status);return await r.json()}catch(e){console.error("API "+path+":",e);return null}}
 
+// ─── Inline SVG Chart Components ───
+function SvgBarChart({data,dataKey,labelKey,height=220,colorFn}){
+  const [tip,setTip]=useState(null);
+  if(!data||!data.length)return null;
+  const mx=Math.max(...data.map(d=>Math.abs(d[dataKey]||0)),1);
+  const w=100/data.length;
+  const hasNeg=data.some(d=>(d[dataKey]||0)<0);
+  const baseY=hasNeg?50:100;
+  return React.createElement("div",{style:{position:"relative",width:"100%",height}},
+    tip&&React.createElement("div",{className:"svgtip",style:{left:tip.x,top:tip.y-30}},tip.text),
+    React.createElement("svg",{width:"100%",height:"100%",viewBox:"0 0 100 100",preserveAspectRatio:"none",style:{overflow:"visible"}},
+      // Grid lines
+      [0,25,50,75,100].map(y=>React.createElement("line",{key:y,x1:0,y1:y,x2:100,y2:y,stroke:C.border,strokeWidth:.3})),
+      data.map((d,i)=>{
+        const v=d[dataKey]||0;
+        const pct=Math.abs(v)/mx;
+        const c=colorFn?colorFn(d,v):v>=0?C.green:C.red;
+        const bh=pct*(hasNeg?48:95);
+        const by=v>=0?(baseY-bh):(baseY);
+        const bx=i*w+w*.1;
+        const bw=w*.8;
+        return React.createElement("rect",{key:i,x:bx,y:by,width:bw,height:Math.max(bh,.5),fill:c,opacity:.75,rx:.5,
+          onMouseEnter:e=>{const r=e.target.getBoundingClientRect();const pr=e.target.closest('div').getBoundingClientRect();setTip({x:r.left-pr.left,y:r.top-pr.top,text:(d[labelKey]||"")+": "+(typeof v==="number"?v.toFixed(1):v)})},
+          onMouseLeave:()=>setTip(null)})
+      })
+    ),
+    React.createElement("div",{style:{display:"flex",justifyContent:"space-around",marginTop:4}},
+      data.map((d,i)=>React.createElement("div",{key:i,style:{fontSize:8,color:C.textDim,textAlign:"center",flex:1,overflow:"hidden",whiteSpace:"nowrap",transform:"rotate(-35deg)",transformOrigin:"top center",fontFamily:mono}},d[labelKey]||""))
+    )
+  );
+}
+
+function SvgAreaChart({data,lines,height=260,xKey="date"}){
+  const [tip,setTip]=useState(null);
+  if(!data||!data.length)return null;
+  const n=data.length;
+  const allVals=lines.flatMap(l=>data.map(d=>d[l.key]||0));
+  const mn=Math.min(...allVals),mx=Math.max(...allVals);
+  const range=mx-mn||1;
+  function px(i){return(i/(n-1))*100}
+  function py(v){return 100-((v-mn)/range)*90-5}
+
+  return React.createElement("div",{style:{position:"relative",width:"100%",height}},
+    tip&&React.createElement("div",{className:"svgtip",style:{left:tip.x,top:Math.max(0,tip.y-36)}},tip.text),
+    React.createElement("svg",{width:"100%",height:"100%",viewBox:"0 0 100 100",preserveAspectRatio:"none",style:{overflow:"visible"}},
+      [0,25,50,75,100].map(y=>React.createElement("line",{key:y,x1:0,y1:y,x2:100,y2:y,stroke:C.border,strokeWidth:.2})),
+      lines.map(l=>{
+        const pts=data.map((d,i)=>px(i)+","+py(d[l.key]||0)).join(" ");
+        const fillPts=pts+(" 100,100 0,100");
+        return React.createElement("g",{key:l.key},
+          React.createElement("polygon",{points:fillPts,fill:l.color,opacity:.12}),
+          React.createElement("polyline",{points:pts,fill:"none",stroke:l.color,strokeWidth:.8})
+        )
+      }),
+      data.map((d,i)=>React.createElement("rect",{key:i,x:px(i)-.8,y:0,width:1.6,height:100,fill:"transparent",
+        onMouseEnter:e=>{const r=e.target.getBoundingClientRect();const pr=e.target.closest('div').getBoundingClientRect();
+          const vals=lines.map(l=>l.name+": "+(d[l.key]||0)).join("  ");
+          setTip({x:r.left-pr.left,y:r.top-pr.top,text:(d[xKey]||"")+"  "+vals})},
+        onMouseLeave:()=>setTip(null)}))
+    ),
+    React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginTop:2}},
+      [data[0],data[Math.floor(n/2)],data[n-1]].filter(Boolean).map((d,i)=>React.createElement("span",{key:i,style:{fontSize:9,color:C.textDim}},d[xKey]||""))
+    ),
+    React.createElement("div",{style:{display:"flex",gap:12,marginTop:4}},
+      lines.map(l=>React.createElement("span",{key:l.key,style:{fontSize:10,color:l.color}},"■ "+l.name))
+    )
+  );
+}
+
+function SvgDualLineChart({data,line1,line2,height=200,xKey="date"}){
+  const [tip,setTip]=useState(null);
+  if(!data||!data.length)return null;
+  const n=data.length;
+  const v1=data.map(d=>d[line1.key]||0),v2=data.map(d=>d[line2.key]||0);
+  const mn1=Math.min(...v1),mx1=Math.max(...v1),rng1=mx1-mn1||1;
+  const mn2=Math.min(...v2),mx2=Math.max(...v2),rng2=mx2-mn2||1;
+  function px(i){return(i/(n-1))*100}
+  function py1(v){return 95-((v-mn1)/rng1)*85}
+  function py2(v){return 95-((v-mn2)/rng2)*85}
+  const pts1=data.map((d,i)=>px(i)+","+py1(d[line1.key]||0)).join(" ");
+  const pts2=data.map((d,i)=>px(i)+","+py2(d[line2.key]||0)).join(" ");
+
+  return React.createElement("div",{style:{position:"relative",width:"100%",height}},
+    tip&&React.createElement("div",{className:"svgtip",style:{left:tip.x,top:Math.max(0,tip.y-36)}},tip.text),
+    React.createElement("svg",{width:"100%",height:"100%",viewBox:"0 0 100 100",preserveAspectRatio:"none",style:{overflow:"visible"}},
+      [0,25,50,75,100].map(y=>React.createElement("line",{key:y,x1:0,y1:y,x2:100,y2:y,stroke:C.border,strokeWidth:.2})),
+      React.createElement("polyline",{points:pts1,fill:"none",stroke:line1.color,strokeWidth:.8}),
+      React.createElement("polyline",{points:pts2,fill:"none",stroke:line2.color,strokeWidth:.6,strokeDasharray:"2,1.5"}),
+      data.map((d,i)=>React.createElement("rect",{key:i,x:px(i)-.8,y:0,width:1.6,height:100,fill:"transparent",
+        onMouseEnter:e=>{const r=e.target.getBoundingClientRect();const pr=e.target.closest('div').getBoundingClientRect();
+          setTip({x:r.left-pr.left,y:r.top-pr.top,text:(d[xKey]||"")+"  "+line1.name+": "+(d[line1.key]||0)+"  "+line2.name+": "+(d[line2.key]||0)})},
+        onMouseLeave:()=>setTip(null)}))
+    ),
+    React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginTop:2}},
+      [data[0],data[Math.floor(n/2)],data[n-1]].filter(Boolean).map((d,i)=>React.createElement("span",{key:i,style:{fontSize:9,color:C.textDim}},d[xKey]||""))
+    ),
+    React.createElement("div",{style:{display:"flex",gap:12,marginTop:4}},
+      React.createElement("span",{style:{fontSize:10,color:line1.color}},"■ "+line1.name),
+      React.createElement("span",{style:{fontSize:10,color:line2.color}},"┄ "+line2.name)
+    )
+  );
+}
+
+function SvgHorizBarChart({data,dataKey,labelKey,height=180}){
+  const [tip,setTip]=useState(null);
+  if(!data||!data.length)return null;
+  const mx=Math.max(...data.map(d=>Math.abs(d[dataKey]||0)),1);
+  const h=100/data.length;
+  return React.createElement("div",{style:{position:"relative",width:"100%",height}},
+    tip&&React.createElement("div",{className:"svgtip",style:{left:tip.x,top:tip.y-30}},tip.text),
+    React.createElement("svg",{width:"100%",height:"100%",viewBox:"0 0 100 100",preserveAspectRatio:"none",style:{overflow:"visible"}},
+      data.map((d,i)=>{
+        const v=d[dataKey]||0;const w=Math.abs(v)/mx*60;const c=v>=0?C.green:C.red;
+        const by=i*h+h*.15;const bh=h*.7;
+        return React.createElement("g",{key:i},
+          React.createElement("text",{x:2,y:by+bh/2+1,fill:C.textMid,fontSize:3.5,dominantBaseline:"middle"},d[labelKey]||""),
+          React.createElement("rect",{x:35,y:by,width:Math.max(w,.5),height:bh,fill:c,opacity:.8,rx:.3,
+            onMouseEnter:e=>{const r=e.target.getBoundingClientRect();const pr=e.target.closest('div').getBoundingClientRect();
+              setTip({x:r.left-pr.left+r.width,y:r.top-pr.top,text:(d[labelKey]||"")+": "+(v>0?"+":"")+v.toFixed(1)+"%"})},
+            onMouseLeave:()=>setTip(null)}),
+          React.createElement("text",{x:36+Math.max(w,1),y:by+bh/2+1,fill:c,fontSize:3,dominantBaseline:"middle",fontFamily:mono},(v>0?"+":"")+v.toFixed(1)+"%")
+        )
+      })
+    )
+  );
+}
+
+function SvgGroupedBarChart({data,bars,labelKey,height=220}){
+  const [tip,setTip]=useState(null);
+  if(!data||!data.length)return null;
+  const mx=Math.max(...bars.flatMap(b=>data.map(d=>Math.abs(d[b.key]||0))),1);
+  const gw=100/data.length;const bw=gw*.7/bars.length;
+  return React.createElement("div",{style:{position:"relative",width:"100%",height}},
+    tip&&React.createElement("div",{className:"svgtip",style:{left:tip.x,top:tip.y-30}},tip.text),
+    React.createElement("svg",{width:"100%",height:"100%",viewBox:"0 0 100 100",preserveAspectRatio:"none",style:{overflow:"visible"}},
+      [0,25,50,75,100].map(y=>React.createElement("line",{key:y,x1:0,y1:y,x2:100,y2:y,stroke:C.border,strokeWidth:.2})),
+      data.flatMap((d,i)=>bars.map((b,j)=>{
+        const v=d[b.key]||0;const bh=Math.abs(v)/mx*90;
+        return React.createElement("rect",{key:i+"-"+j,x:i*gw+gw*.15+j*bw,y:100-bh,width:bw*.9,height:Math.max(bh,.5),fill:b.color,opacity:.7,rx:.3,
+          onMouseEnter:e=>{const r=e.target.getBoundingClientRect();const pr=e.target.closest('div').getBoundingClientRect();
+            setTip({x:r.left-pr.left,y:r.top-pr.top,text:(d[labelKey]||"")+" "+b.name+": "+v.toFixed(1)+"%"})},
+          onMouseLeave:()=>setTip(null)})
+      }))
+    ),
+    React.createElement("div",{style:{display:"flex",justifyContent:"space-around",marginTop:4}},data.map((d,i)=>React.createElement("div",{key:i,style:{fontSize:8,color:C.textDim,textAlign:"center",flex:1,fontFamily:mono}},d[labelKey]||""))),
+    React.createElement("div",{style:{display:"flex",gap:12,marginTop:4}},bars.map(b=>React.createElement("span",{key:b.key,style:{fontSize:10,color:b.color}},"■ "+b.name)))
+  );
+}
+
+// ─── Shared UI Components ───
 function Badge({children,color=C.green}){return React.createElement("span",{style:{display:"inline-block",padding:"2px 8px",borderRadius:4,fontSize:11,fontWeight:700,background:color+"18",color,border:"1px solid "+color+"30"}},children)}
-
 function Metric({label,value,sub,color}){return React.createElement("div",{style:{padding:"14px 16px",background:C.bgCard,borderRadius:8,border:"1px solid "+C.border}},React.createElement("div",{style:{fontSize:11,color:C.textDim,textTransform:"uppercase",letterSpacing:1,marginBottom:6}},label),React.createElement("div",{style:{fontSize:26,fontWeight:800,color:color||C.text,fontFamily:mono,lineHeight:1}},value),sub&&React.createElement("div",{style:{fontSize:11,color:C.textDim,marginTop:4}},sub))}
-
 function ScoreBar({score}){const pct=Math.max(0,Math.min(100,score));const color=score>=60?C.green:score>=35?C.amber:C.red;return React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},React.createElement("div",{style:{flex:1,height:6,background:C.border,borderRadius:3,overflow:"hidden"}},React.createElement("div",{style:{width:pct+"%",height:"100%",background:color,borderRadius:3,transition:"width 0.6s"}})),React.createElement("span",{style:{fontSize:13,fontWeight:700,color,fontFamily:mono,minWidth:28}},score))}
-
 function Tip({children}){return React.createElement("div",{style:{padding:"12px 16px",background:C.bg,border:"1px solid "+C.border,borderRadius:8,marginBottom:12,fontSize:12,color:C.textMid,lineHeight:1.6}},React.createElement("span",{style:{display:"inline-block",width:18,height:18,borderRadius:"50%",background:C.green+"15",color:C.green,textAlign:"center",lineHeight:"18px",fontSize:10,fontWeight:800,marginRight:6}},"?"),children)}
-
 function LayerPill({name,icon,score}){const on=score&&score>0;return React.createElement("span",{style:{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:4,fontSize:10,fontWeight:600,fontFamily:mono,background:on?C.green+"15":"#1a2235",color:on?C.green:"#475569",border:"1px solid "+(on?C.green+"30":"#1a223580")}},icon," ",name," ",on?"+"+score:"OFF")}
 
-// Score breakdown helpers
-function ltBreakdown(r){
-  const rg=r.revenue_growth_pct||0,ps=r.ps_ratio||0,gm=r.gross_margin_pct||0,fcf=r.fcf_m||0,disc=r.pct_from_52w_high||0;
-  return[{l:"Revenue Growth",v:rg>25?30:rg>15?15:rg>0?5:-10,m:30,d:rg?rg+"%":"—"},{l:"Valuation",v:(ps<5&&rg>15)?25:(ps<10&&rg>20)?15:ps>30?-10:0,m:25,d:ps?ps+"x P/S":"—"},{l:"Gross Margin",v:gm>75?20:gm>60?10:gm<40?-10:0,m:20,d:gm?gm+"%":"—"},{l:"Free Cash Flow",v:fcf>500?20:fcf>0?10:-5,m:20,d:fcf?"$"+fcf+"M":"—"},{l:"52w Discount",v:disc<-30?15:disc<-15?8:0,m:15,d:disc?disc+"%":"—"}];
-}
-function optBreakdown(r){
-  const dte=r.days_to_earnings,iv=r.iv_30d||0,vr=r.vol_ratio||1,rsi=r.rsi||50,bb=r.bb_width||999,beta=r.beta||1,sp=r.short_pct||0;
-  let ev=0;if(dte!=null){if(dte>=5&&dte<=14)ev=35;else if(dte>=15&&dte<=30)ev=25;else if(dte>=1&&dte<=4)ev=15}
-  return[{l:"Earnings",v:ev,m:35,d:dte!=null?dte+"d":"—"},{l:"IV",v:iv>60?20:iv>40?10:0,m:20,d:iv?iv+"%":"—"},{l:"Volume",v:vr>2?20:vr>1.5?10:0,m:20,d:vr+"x"},{l:"RSI",v:rsi<30?15:rsi>70?10:0,m:15,d:Math.round(rsi)+""},{l:"BB Squeeze",v:bb<10?15:bb<15?8:0,m:15,d:bb<999?bb+"%":"—"},{l:"Beta",v:beta>1.5?10:0,m:10,d:beta+""},{l:"Short%",v:sp>10?10:0,m:10,d:sp?sp+"%":"—"}];
-}
-function Breakdown({items,accent}){return React.createElement("div",{style:{padding:12,background:C.bg,borderRadius:8,border:"1px solid "+C.border}},React.createElement("div",{style:{fontSize:12,fontWeight:700,marginBottom:8,color:accent||C.green}},items===null?"Loading...":"Score Components"),items&&items.map((it,i)=>{const c=it.v>0?C.green:it.v<0?C.red:C.border;const w=it.v>0?Math.min(100,(it.v/it.m)*100):0;return React.createElement("div",{key:i,style:{display:"flex",alignItems:"center",gap:6,padding:"3px 0"}},React.createElement("span",{style:{fontSize:10,color:C.textDim,minWidth:75}},it.l),React.createElement("div",{style:{flex:1,height:4,background:C.border,borderRadius:2,overflow:"hidden"}},React.createElement("div",{style:{width:w+"%",height:"100%",background:c,borderRadius:2}})),React.createElement("span",{style:{fontSize:11,fontWeight:700,color:c,fontFamily:mono,minWidth:24,textAlign:"right"}},(it.v>0?"+":"")+it.v),React.createElement("span",{style:{fontSize:9,color:"#475569",minWidth:48,textAlign:"right"}},it.d))}))}
+// Score breakdowns
+function ltBreakdown(r){const rg=r.revenue_growth_pct||0,ps=r.ps_ratio||0,gm=r.gross_margin_pct||0,fcf=r.fcf_m||0,disc=r.pct_from_52w_high||0;return[{l:"Revenue Growth",v:rg>25?30:rg>15?15:rg>0?5:-10,m:30,d:rg?rg+"%":"—"},{l:"Valuation",v:(ps<5&&rg>15)?25:(ps<10&&rg>20)?15:ps>30?-10:0,m:25,d:ps?ps+"x P/S":"—"},{l:"Gross Margin",v:gm>75?20:gm>60?10:gm<40?-10:0,m:20,d:gm?gm+"%":"—"},{l:"Free Cash Flow",v:fcf>500?20:fcf>0?10:-5,m:20,d:fcf?"$"+fcf+"M":"—"},{l:"52w Discount",v:disc<-30?15:disc<-15?8:0,m:15,d:disc?disc+"%":"—"}]}
+function optBreakdown(r){const dte=r.days_to_earnings,iv=r.iv_30d||0,vr=r.vol_ratio||1,rsi=r.rsi||50,bb=r.bb_width||999,beta=r.beta||1,sp=r.short_pct||0;let ev=0;if(dte!=null){if(dte>=5&&dte<=14)ev=35;else if(dte>=15&&dte<=30)ev=25;else if(dte>=1&&dte<=4)ev=15}return[{l:"Earnings",v:ev,m:35,d:dte!=null?dte+"d":"—"},{l:"IV",v:iv>60?20:iv>40?10:0,m:20,d:iv?iv+"%":"—"},{l:"Volume",v:vr>2?20:vr>1.5?10:0,m:20,d:vr+"x"},{l:"RSI",v:rsi<30?15:rsi>70?10:0,m:15,d:Math.round(rsi)+""},{l:"BB Squeeze",v:bb<10?15:bb<15?8:0,m:15,d:bb<999?bb+"%":"—"},{l:"Beta",v:beta>1.5?10:0,m:10,d:beta+""},{l:"Short%",v:sp>10?10:0,m:10,d:sp?sp+"%":"—"}]}
+function Breakdown({items,accent}){return React.createElement("div",{style:{padding:12,background:C.bg,borderRadius:8,border:"1px solid "+C.border}},React.createElement("div",{style:{fontSize:12,fontWeight:700,marginBottom:8,color:accent||C.green}},"Score Components"),items&&items.map((it,i)=>{const c=it.v>0?C.green:it.v<0?C.red:C.border;const w=it.v>0?Math.min(100,(it.v/it.m)*100):0;return React.createElement("div",{key:i,style:{display:"flex",alignItems:"center",gap:6,padding:"3px 0"}},React.createElement("span",{style:{fontSize:10,color:C.textDim,minWidth:75}},it.l),React.createElement("div",{style:{flex:1,height:4,background:C.border,borderRadius:2,overflow:"hidden"}},React.createElement("div",{style:{width:w+"%",height:"100%",background:c,borderRadius:2}})),React.createElement("span",{style:{fontSize:11,fontWeight:700,color:c,fontFamily:mono,minWidth:24,textAlign:"right"}},(it.v>0?"+":"")+it.v),React.createElement("span",{style:{fontSize:9,color:"#475569",minWidth:48,textAlign:"right"}},it.d))}))}
 
 // ─── Overview Tab ───
 function OverviewTab({stats,latest}){
   if(!stats)return React.createElement("div",{style:{color:C.textDim,padding:40,textAlign:"center"}},"Loading...");
   const res=latest?.results||[];
-  const topLT=res.slice(0,10);
-  const topOpt=[...res].sort((a,b)=>b.opt_score-a.opt_score).slice(0,10);
+  const topLT=res.slice(0,10),topOpt=[...res].sort((a,b)=>b.opt_score-a.opt_score).slice(0,10);
   const rsiData=[...res].sort((a,b)=>a.rsi-b.rsi);
-
   return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:24}},
-    React.createElement(Tip,null,React.createElement("b",null,"How scores work:"),` CyberScreener scans ${res.length} cybersecurity stocks every 2h. `,React.createElement("b",null,"LT Score")," = long-term quality (revenue growth, margins, valuation, FCF, discount from highs). ",React.createElement("b",null,"Opt Score")," = options opportunity (earnings timing, IV, volume, RSI, Bollinger squeeze). Click ",React.createElement("b",null,"Scores")," tab for component breakdowns."),
-    // Metrics
+    React.createElement(Tip,null,React.createElement("b",null,"How scores work:")," CyberScreener scans "+res.length+" cybersecurity stocks every 2h. ",React.createElement("b",null,"LT Score")," = long-term quality (revenue growth, margins, valuation, FCF, discount). ",React.createElement("b",null,"Opt Score")," = options opportunity (earnings timing, IV, volume, RSI, BB squeeze). Click ",React.createElement("b",null,"Scores")," for breakdowns."),
     React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}},
-      React.createElement(Metric,{label:"Total Scans",value:stats.total_scans}),
-      React.createElement(Metric,{label:"Tickers",value:stats.unique_tickers_tracked}),
-      React.createElement(Metric,{label:"Records",value:(stats.total_score_records||0).toLocaleString()}),
-      React.createElement(Metric,{label:"Prices",value:(stats.total_price_snapshots||0).toLocaleString()}),
-      React.createElement(Metric,{label:"Last Scan",value:stats.last_scan?new Date(stats.last_scan).toLocaleDateString():"—"})
-    ),
-    // Two columns: LT + Opt
+      React.createElement(Metric,{label:"Total Scans",value:stats.total_scans}),React.createElement(Metric,{label:"Tickers",value:stats.unique_tickers_tracked}),React.createElement(Metric,{label:"Records",value:(stats.total_score_records||0).toLocaleString()}),React.createElement(Metric,{label:"Prices",value:(stats.total_price_snapshots||0).toLocaleString()}),React.createElement(Metric,{label:"Last Scan",value:stats.last_scan?new Date(stats.last_scan).toLocaleDateString():"—"})),
     React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}},
-      React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
-        React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"📈 Long-Term Scores"),
-        React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Top 10 · Revenue + margins + valuation + FCF"),
-        topLT.map((r,i)=>React.createElement("div",{key:r.ticker,style:{display:"grid",gridTemplateColumns:"20px 60px 1fr 70px",alignItems:"center",gap:8,padding:"4px 0"}},React.createElement("span",{style:{fontSize:11,color:C.textDim}},i+1),React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement(ScoreBar,{score:r.lt_score}),React.createElement("span",{style:{fontSize:12,color:C.textDim,textAlign:"right"}},"$"+r.price)))
-      ),
-      React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
-        React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"⚡ Options Scores"),
-        React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Top 10 · Earnings + IV + volume + momentum"),
-        topOpt.map((r,i)=>React.createElement("div",{key:r.ticker,style:{display:"grid",gridTemplateColumns:"20px 60px 1fr 70px",alignItems:"center",gap:8,padding:"4px 0"}},React.createElement("span",{style:{fontSize:11,color:C.textDim}},i+1),React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement(ScoreBar,{score:r.opt_score}),React.createElement("span",{style:{fontSize:12,color:C.textDim,textAlign:"right"}},"RSI "+(r.rsi||"—"))))
-      )
-    ),
-    // Intelligence layers
-    React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
-      React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"🧠 Intelligence Layers"),
-      React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Additional signals that augment scores when enabled"),
-      React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}},
-        [{icon:"📋",name:"SEC Filings",status:"STUB",desc:"8-K filings, insider trading from EDGAR"},{icon:"💬",name:"Sentiment",status:"PLANNED",desc:"StockTwits + Reddit chatter analysis"},{icon:"🐋",name:"Whale Flow",status:"PLANNED",desc:"Unusual options activity / block trades"}].map(l=>React.createElement("div",{key:l.name,style:{padding:14,background:C.bg,borderRadius:8,border:"1px solid "+C.border}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:6}},React.createElement("span",null,l.icon),React.createElement("span",{style:{fontSize:13,fontWeight:700}},l.name),React.createElement("span",{style:{marginLeft:"auto",fontSize:10,fontWeight:600,fontFamily:mono,padding:"2px 6px",borderRadius:4,background:"#1a2235",color:"#475569",border:"1px solid #1a223580"}},l.status)),React.createElement("div",{style:{fontSize:11,color:C.textDim,lineHeight:1.4}},l.desc)))
-      )
-    ),
-    // RSI Heatmap (Recharts)
-    rsiData.length>0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
-      React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"RSI Heatmap"),
-      React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Green (<30) = oversold · Red (>70) = overbought"),
-      React.createElement(ResponsiveContainer,{width:"100%",height:220},
-        React.createElement(BarChart,{data:rsiData,margin:{top:4,right:8,bottom:4,left:8}},
-          React.createElement(XAxis,{dataKey:"ticker",tick:{fill:C.textDim,fontSize:9},interval:0,angle:-45,textAnchor:"end",height:50}),
-          React.createElement(YAxis,{domain:[0,100],tick:{fill:C.textDim,fontSize:10}}),
-          React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
-          React.createElement(Bar,{dataKey:"rsi",radius:[3,3,0,0]},...rsiData.map((r,i)=>React.createElement(Cell,{key:i,fill:r.rsi<30?C.green:r.rsi>70?C.red:C.amber,fillOpacity:0.8})))
-        )
-      )
-    )
+      React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"📈 Long-Term Scores"),React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Top 10 · Revenue + margins + valuation + FCF"),topLT.map((r,i)=>React.createElement("div",{key:r.ticker,style:{display:"grid",gridTemplateColumns:"20px 60px 1fr 70px",alignItems:"center",gap:8,padding:"4px 0"}},React.createElement("span",{style:{fontSize:11,color:C.textDim}},i+1),React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement(ScoreBar,{score:r.lt_score}),React.createElement("span",{style:{fontSize:12,color:C.textDim,textAlign:"right"}},"$"+r.price)))),
+      React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"⚡ Options Scores"),React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Top 10 · Earnings + IV + volume + momentum"),topOpt.map((r,i)=>React.createElement("div",{key:r.ticker,style:{display:"grid",gridTemplateColumns:"20px 60px 1fr 70px",alignItems:"center",gap:8,padding:"4px 0"}},React.createElement("span",{style:{fontSize:11,color:C.textDim}},i+1),React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement(ScoreBar,{score:r.opt_score}),React.createElement("span",{style:{fontSize:12,color:C.textDim,textAlign:"right"}},"RSI "+(r.rsi||"—")))))),
+    React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"🧠 Intelligence Layers"),React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Additional signals that augment scores when enabled"),React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}},[{i:"📋",n:"SEC Filings",s:"STUB",d:"8-K filings, insider trading from EDGAR"},{i:"💬",n:"Sentiment",s:"PLANNED",d:"StockTwits + Reddit chatter analysis"},{i:"🐋",n:"Whale Flow",s:"PLANNED",d:"Unusual options activity / block trades"}].map(l=>React.createElement("div",{key:l.n,style:{padding:14,background:C.bg,borderRadius:8,border:"1px solid "+C.border}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:6}},React.createElement("span",null,l.i),React.createElement("span",{style:{fontSize:13,fontWeight:700}},l.n),React.createElement("span",{style:{marginLeft:"auto",fontSize:10,fontWeight:600,fontFamily:mono,padding:"2px 6px",borderRadius:4,background:"#1a2235",color:"#475569",border:"1px solid #1a223580"}},l.s)),React.createElement("div",{style:{fontSize:11,color:C.textDim,lineHeight:1.4}},l.d))))),
+    rsiData.length>0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"RSI Heatmap"),React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Green (<30) = oversold · Red (>70) = overbought"),React.createElement(SvgBarChart,{data:rsiData,dataKey:"rsi",labelKey:"ticker",height:220,colorFn:(d)=>d.rsi<30?C.green:d.rsi>70?C.red:C.amber}))
   );
 }
 
-// ─── Scores Tab (with Recharts charts restored) ───
+// ─── Scores Tab ───
 function ScoresTab({latest}){
-  const [sel,setSel]=useState(null);
-  const [hist,setHist]=useState(null);
+  const [sel,setSel]=useState(null);const [hist,setHist]=useState(null);
   const results=latest?.results||[];
-
   const load=useCallback(async(t)=>{setSel(t);setHist(null);const d=await api("/scores/"+t+"?days=180");if(d)setHist(d)},[]);
-
   const latestRow=sel?results.find(r=>r.ticker===sel):null;
+  const L=hist?.history?.length?hist.history[hist.history.length-1]:null;
+  const F=hist?.history?.length?hist.history[0]:null;
+  const chartData=hist?.history?.map(h=>({date:new Date(h.timestamp).toLocaleDateString("en-US",{month:"short",day:"numeric"}),lt_score:h.lt_score,opt_score:h.opt_score,price:h.price,rsi:h.rsi}))||[];
 
   return React.createElement("div",{style:{display:"flex",gap:16,minHeight:"60vh"}},
-    // Ticker list
     React.createElement("div",{style:{width:320,flexShrink:0,background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:12,maxHeight:"70vh",overflowY:"auto"}},
       React.createElement("div",{style:{fontSize:11,color:C.textDim,textTransform:"uppercase",letterSpacing:1,padding:"4px 8px",marginBottom:4}},results.length+" tickers"),
       React.createElement("div",{style:{fontSize:10,color:"#475569",padding:"0 8px 8px"}},"Click for breakdown"),
-      results.map(r=>React.createElement("div",{key:r.ticker,onClick:()=>load(r.ticker),style:{display:"grid",gridTemplateColumns:"54px 1fr 44px 44px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:6,cursor:"pointer",background:sel===r.ticker?C.green+"10":"transparent",borderLeft:sel===r.ticker?"3px solid "+C.green:"3px solid transparent"}},
-        React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),
-        React.createElement("span",{style:{fontSize:11,color:C.textDim}},"$"+r.price),
-        React.createElement(Badge,{color:r.lt_score>=50?C.green:r.lt_score>=30?C.amber:C.textDim},r.lt_score),
-        React.createElement(Badge,{color:r.opt_score>=40?C.green:r.opt_score>=25?C.amber:C.textDim},r.opt_score)
-      ))
-    ),
-    // Detail
+      results.map(r=>React.createElement("div",{key:r.ticker,onClick:()=>load(r.ticker),style:{display:"grid",gridTemplateColumns:"54px 1fr 44px 44px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:6,cursor:"pointer",background:sel===r.ticker?C.green+"10":"transparent",borderLeft:sel===r.ticker?"3px solid "+C.green:"3px solid transparent"}},React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement("span",{style:{fontSize:11,color:C.textDim}},"$"+r.price),React.createElement(Badge,{color:r.lt_score>=50?C.green:r.lt_score>=30?C.amber:C.textDim},r.lt_score),React.createElement(Badge,{color:r.opt_score>=40?C.green:r.opt_score>=25?C.amber:C.textDim},r.opt_score)))),
     React.createElement("div",{style:{flex:1}},
       !sel?React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"◆"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:8}},"Score Explorer"),React.createElement("div",{style:{fontSize:12,color:C.textDim,maxWidth:400,margin:"0 auto",lineHeight:1.6}},"Select a ticker to see score history, component breakdown, and intelligence layer status."))
-      :!hist?.history?.length?React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{className:"pulse",style:{fontSize:14,color:C.textDim}},"Loading "+sel+"..."))
+      :!L?React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{className:"pulse",style:{fontSize:14,color:C.textDim}},"Loading "+sel+"..."))
       :React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-        // Metrics
         React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12}},
-          React.createElement(Metric,{label:"LT Score",value:hist.history[hist.history.length-1].lt_score,color:hist.history[hist.history.length-1].lt_score>=60?C.green:hist.history[hist.history.length-1].lt_score>=35?C.amber:C.red,sub:"Long-term quality"}),
-          React.createElement(Metric,{label:"Opt Score",value:hist.history[hist.history.length-1].opt_score,color:hist.history[hist.history.length-1].opt_score>=40?C.green:hist.history[hist.history.length-1].opt_score>=25?C.amber:C.red,sub:"Options opportunity"}),
-          React.createElement(Metric,{label:"LT Δ",value:(hist.history[hist.history.length-1].lt_score-hist.history[0].lt_score>=0?"+":"")+(hist.history[hist.history.length-1].lt_score-hist.history[0].lt_score),color:hist.history[hist.history.length-1].lt_score>=hist.history[0].lt_score?C.green:C.red}),
-          React.createElement(Metric,{label:"Price",value:"$"+hist.history[hist.history.length-1].price})
-        ),
-        // Layer pills
-        latestRow&&React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-          React.createElement(LayerPill,{name:"SEC",icon:"📋",score:latestRow.sec_score}),
-          React.createElement(LayerPill,{name:"Sent",icon:"💬",score:latestRow.sentiment_score}),
-          React.createElement(LayerPill,{name:"Whale",icon:"🐋",score:latestRow.whale_score})
-        ),
-        // Component breakdowns side by side
-        latestRow&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
-          React.createElement(Breakdown,{items:ltBreakdown(latestRow),accent:C.green}),
-          React.createElement(Breakdown,{items:optBreakdown(latestRow),accent:C.blue})
-        ),
-        // Score history chart (Recharts AreaChart restored)
-        React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
-          React.createElement("h2",{style:{fontSize:16,fontWeight:800,marginBottom:4}},sel+" — Score History"),
-          React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},hist.data_points+" data points"),
-          React.createElement(ResponsiveContainer,{width:"100%",height:280},
-            React.createElement(AreaChart,{data:hist.history.map(h=>({...h,date:new Date(h.timestamp).toLocaleDateString("en-US",{month:"short",day:"numeric"})})),margin:{top:8,right:16,bottom:4,left:0}},
-              React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:C.border}),
-              React.createElement(XAxis,{dataKey:"date",tick:{fill:C.textDim,fontSize:10}}),
-              React.createElement(YAxis,{tick:{fill:C.textDim,fontSize:10}}),
-              React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
-              React.createElement(Area,{type:"monotone",dataKey:"lt_score",name:"LT Score",stroke:C.green,fill:C.greenDim,strokeWidth:2}),
-              React.createElement(Area,{type:"monotone",dataKey:"opt_score",name:"Opt Score",stroke:C.blue,fill:C.blueDim,strokeWidth:2}),
-              React.createElement(Legend,{wrapperStyle:{fontSize:11}})
-            )
-          )
-        ),
-        // Price + RSI dual-axis chart (RESTORED)
-        React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
-          React.createElement("h2",{style:{fontSize:16,fontWeight:800,marginBottom:4}},"Price & RSI"),
-          React.createElement(ResponsiveContainer,{width:"100%",height:200},
-            React.createElement(LineChart,{data:hist.history.map(h=>({date:new Date(h.timestamp).toLocaleDateString("en-US",{month:"short",day:"numeric"}),price:h.price,rsi:h.rsi})),margin:{top:8,right:16,bottom:4,left:0}},
-              React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:C.border}),
-              React.createElement(XAxis,{dataKey:"date",tick:{fill:C.textDim,fontSize:10}}),
-              React.createElement(YAxis,{yAxisId:"price",tick:{fill:C.textDim,fontSize:10},tickFormatter:v=>"$"+v}),
-              React.createElement(YAxis,{yAxisId:"rsi",orientation:"right",domain:[0,100],tick:{fill:C.textDim,fontSize:10}}),
-              React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
-              React.createElement(Line,{yAxisId:"price",type:"monotone",dataKey:"price",name:"Price",stroke:C.green,strokeWidth:2,dot:false}),
-              React.createElement(Line,{yAxisId:"rsi",type:"monotone",dataKey:"rsi",name:"RSI",stroke:C.amber,strokeWidth:1,dot:false,strokeDasharray:"4 4"}),
-              React.createElement(Legend,{wrapperStyle:{fontSize:11}})
-            )
-          )
-        )
+          React.createElement(Metric,{label:"LT Score",value:L.lt_score,color:L.lt_score>=60?C.green:L.lt_score>=35?C.amber:C.red,sub:"Long-term quality"}),
+          React.createElement(Metric,{label:"Opt Score",value:L.opt_score,color:L.opt_score>=40?C.green:L.opt_score>=25?C.amber:C.red,sub:"Options opportunity"}),
+          React.createElement(Metric,{label:"LT Δ",value:(L.lt_score-F.lt_score>=0?"+":"")+(L.lt_score-F.lt_score),color:L.lt_score>=F.lt_score?C.green:C.red}),
+          React.createElement(Metric,{label:"Price",value:"$"+L.price})),
+        latestRow&&React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},React.createElement(LayerPill,{name:"SEC",icon:"📋",score:latestRow.sec_score}),React.createElement(LayerPill,{name:"Sent",icon:"💬",score:latestRow.sentiment_score}),React.createElement(LayerPill,{name:"Whale",icon:"🐋",score:latestRow.whale_score})),
+        latestRow&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},React.createElement(Breakdown,{items:ltBreakdown(latestRow),accent:C.green}),React.createElement(Breakdown,{items:optBreakdown(latestRow),accent:C.blue})),
+        React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:800,marginBottom:4}},sel+" — Score History"),React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},hist.data_points+" data points"),React.createElement(SvgAreaChart,{data:chartData,lines:[{key:"lt_score",name:"LT Score",color:C.green},{key:"opt_score",name:"Opt Score",color:C.blue}],height:260})),
+        React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:800,marginBottom:4}},"Price & RSI"),React.createElement(SvgDualLineChart,{data:chartData,line1:{key:"price",name:"Price",color:C.green},line2:{key:"rsi",name:"RSI",color:C.amber},height:200}))
       )
     )
   );
 }
 
-// ─── Plays Tab (async loading with polling) ───
+// ─── Plays Tab ───
 function PlaysTab({latest}){
-  const [sel,setSel]=useState(null);
-  const [data,setData]=useState(null);
-  const [msg,setMsg]=useState("");
-  const poller=useRef(null);
-  const timer=useRef(null);
-  const results=latest?.results||[];
-  const opts=[...results].sort((a,b)=>b.opt_score-a.opt_score);
-
+  const [sel,setSel]=useState(null);const [data,setData]=useState(null);const [msg,setMsg]=useState("");
+  const poller=useRef(null);const timer=useRef(null);
+  const results=latest?.results||[];const opts=[...results].sort((a,b)=>b.opt_score-a.opt_score);
   function cleanup(){if(poller.current){clearInterval(poller.current);poller.current=null}if(timer.current){clearTimeout(timer.current);timer.current=null}}
-
-  async function loadPlays(t){
-    cleanup();setSel(t);setData(null);setMsg("Starting...");
+  async function loadPlays(t){cleanup();setSel(t);setData(null);setMsg("Starting...");
     const d=await api("/plays/"+t+"/generate",{method:"POST"});
     if(!d){setData({ticker:t,plays:[],error:"Could not reach API"});return}
     if(d.status==="cached"){setData(d.result);return}
     setMsg(d.message||"Working...");
-    poller.current=setInterval(async()=>{
-      const s=await api("/plays/"+t+"/status");
-      if(!s)return;
-      if(s.status==="done"){cleanup();setData(s.result||{ticker:t,plays:[],error:"No data"});}
-      else if(s.status==="running")setMsg(s.message||"Working...");
-    },2000);
-    timer.current=setTimeout(()=>{cleanup();setData(d=>d||{ticker:t,plays:[],error:"Timed out after 45s — try again"})},45000);
-  }
-
+    poller.current=setInterval(async()=>{const s=await api("/plays/"+t+"/status");if(!s)return;if(s.status==="done"){cleanup();setData(s.result||{ticker:t,plays:[],error:"No data"})}else if(s.status==="running")setMsg(s.message||"Working...")},2000);
+    timer.current=setTimeout(()=>{cleanup();setData(prev=>prev||{ticker:t,plays:[],error:"Timed out after 45s — try again"})},45000)}
   useEffect(()=>()=>cleanup(),[]);
-
   function mc(lb,vl,cl){return React.createElement("div",{style:{padding:8,background:C.bg,borderRadius:6}},React.createElement("div",{style:{fontSize:9,color:C.textDim,textTransform:"uppercase",letterSpacing:.5}},lb),React.createElement("div",{style:{fontSize:14,fontWeight:700,fontFamily:mono,color:cl||C.text}},vl))}
 
   let detail;
-  if(!sel){
-    detail=React.createElement("div",null,
-      React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center",marginBottom:12}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"⚡"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:8}},"Options Play Builder"),React.createElement("div",{style:{fontSize:12,color:C.textDim,maxWidth:440,margin:"0 auto",lineHeight:1.6}},"Select a ticker to fetch its live options chain and generate strategy recommendations.")),
-      React.createElement(Tip,null,React.createElement("b",null,"Strategies:")," Long calls/puts (directional), straddles & strangles (earnings), vertical spreads (defined risk), credit spreads (sell premium). Takes 10–20s. Higher Opt Score = more catalysts.")
-    );
-  }else if(!data){
-    detail=React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{className:"pulse",style:{fontSize:24,marginBottom:12}},"⟳"),React.createElement("div",{style:{fontSize:14,color:C.textMid,marginBottom:8}},"Generating plays for "+sel),React.createElement("div",{style:{fontSize:12,color:"#475569"}},msg),React.createElement("div",{style:{marginTop:12,fontSize:10,color:"#475569"}},"Fetching live options chain — typically 10–20s"));
-  }else if(data.error&&(!data.plays||data.plays.length===0)){
-    detail=React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:24}},React.createElement("h2",{style:{fontSize:18,fontWeight:800}},sel),data.price&&React.createElement("div",{style:{fontSize:20,fontWeight:800,fontFamily:mono,margin:"8px 0"}},"$"+data.price),React.createElement("div",{style:{marginTop:12,padding:16,background:C.redDim,border:"1px solid "+C.red+"30",borderRadius:8}},React.createElement("span",{style:{color:C.red,fontSize:13}},"⚠ "+data.error)));
-  }else{
-    const p=data;
+  if(!sel){detail=React.createElement("div",null,React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center",marginBottom:12}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"⚡"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:8}},"Options Play Builder"),React.createElement("div",{style:{fontSize:12,color:C.textDim,maxWidth:440,margin:"0 auto",lineHeight:1.6}},"Select a ticker to fetch live options chain and generate strategy recommendations.")),React.createElement(Tip,null,React.createElement("b",null,"Strategies:")," Long calls/puts, straddles & strangles, vertical spreads, credit spreads. Takes 10–20s. Higher Opt Score = more catalysts."))}
+  else if(!data){detail=React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{className:"pulse",style:{fontSize:24,marginBottom:12}},"⟳"),React.createElement("div",{style:{fontSize:14,color:C.textMid,marginBottom:8}},"Generating plays for "+sel),React.createElement("div",{style:{fontSize:12,color:"#475569"}},msg),React.createElement("div",{style:{marginTop:12,fontSize:10,color:"#475569"}},"Fetching live options chain — typically 10–20s"))}
+  else if(data.error&&(!data.plays||!data.plays.length)){detail=React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:24}},React.createElement("h2",{style:{fontSize:18,fontWeight:800}},sel),data.price&&React.createElement("div",{style:{fontSize:20,fontWeight:800,fontFamily:mono,margin:"8px 0"}},"$"+data.price),React.createElement("div",{style:{marginTop:12,padding:16,background:C.redDim,border:"1px solid "+C.red+"30",borderRadius:8}},React.createElement("span",{style:{color:C.red,fontSize:13}},"⚠ "+data.error)))}
+  else{const p=data;
     detail=React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
       React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
         React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}},React.createElement("div",null,React.createElement("h2",{style:{fontSize:18,fontWeight:800}},p.ticker+" Play Builder"),React.createElement("p",{style:{fontSize:12,color:C.textDim}},p.play_count+" play"+(p.play_count!==1?"s":"")+" · "+new Date(p.timestamp).toLocaleTimeString())),React.createElement("div",{style:{fontSize:24,fontWeight:800,fontFamily:mono}},"$"+p.price)),
@@ -258,192 +267,75 @@ function PlaysTab({latest}){
           React.createElement(Metric,{label:"IV",value:p.iv_30d!=null?p.iv_30d+"%":"—",color:p.iv_30d!=null?(p.iv_30d>50?C.red:p.iv_30d>30?C.amber:C.green):C.textDim}),
           React.createElement(Metric,{label:"Earnings",value:p.days_to_earnings!=null?p.days_to_earnings+"d":"—",color:p.days_to_earnings!=null&&p.days_to_earnings<=14?C.green:C.textDim}),
           React.createElement(Metric,{label:"Beta",value:p.beta!=null?p.beta:"—"}),
-          React.createElement(Metric,{label:"Vol",value:p.vol_ratio!=null?p.vol_ratio+"x":"—",color:p.vol_ratio!=null&&p.vol_ratio>2?C.green:C.textDim})
-        )
-      ),
-      ...(p.plays&&p.plays.length>0?p.plays.map((pl,i)=>{
-        const dC=pl.direction.indexOf("Bullish")>=0?C.green:pl.direction.indexOf("Bearish")>=0?C.red:C.blue;
+          React.createElement(Metric,{label:"Vol",value:p.vol_ratio!=null?p.vol_ratio+"x":"—",color:p.vol_ratio!=null&&p.vol_ratio>2?C.green:C.textDim}))),
+      ...(p.plays&&p.plays.length>0?p.plays.map((pl,i)=>{const dC=pl.direction.indexOf("Bullish")>=0?C.green:pl.direction.indexOf("Bearish")>=0?C.red:C.blue;
         return React.createElement("div",{key:i,style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,borderLeft:"3px solid "+dC,padding:20}},
           React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}},React.createElement("div",null,React.createElement("span",{style:{fontSize:15,fontWeight:800,color:dC}},pl.emoji+" "+pl.strategy),React.createElement(Badge,{color:dC},pl.direction)),React.createElement("div",{style:{textAlign:"right"}},React.createElement("div",{style:{fontSize:14,fontWeight:700,fontFamily:mono}},pl.action),React.createElement("div",{style:{fontSize:11,color:C.textDim}},"Exp: "+pl.expiry+" ("+pl.dte+"d)"))),
           React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(115px,1fr))",gap:8}},mc("Entry","$"+pl.entry_price),mc("Breakeven",""+pl.breakeven),mc("Max Loss","$"+Number(pl.max_loss).toLocaleString(),C.red),mc("Max Gain",""+pl.max_gain,C.green),pl.bid!=null&&mc("Bid/Ask","$"+pl.bid+" / $"+pl.ask),mc("IV",pl.iv+"%",C.amber),mc("Volume",Number(pl.volume).toLocaleString()),mc("Open Int",Number(pl.open_interest).toLocaleString())),
           React.createElement("div",{style:{marginTop:10,padding:10,background:C.bg+"80",borderRadius:6,border:"1px solid "+C.border}},React.createElement("div",{style:{fontSize:10,fontWeight:600,color:C.textDim,textTransform:"uppercase",letterSpacing:.5,marginBottom:3}},"Rationale"),React.createElement("div",{style:{fontSize:11,color:C.textMid,lineHeight:1.5}},pl.rationale)),
-          React.createElement("div",{style:{marginTop:6,padding:"8px 10px",background:C.redDim+"40",borderRadius:6,border:"1px solid "+C.red+"15"}},React.createElement("div",{style:{fontSize:10,color:C.red+"80"}},"⚠ "+pl.risk_notes))
-        )
-      }):[React.createElement("div",{key:"empty",style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:24,textAlign:"center"}},React.createElement("div",{style:{fontSize:12,color:C.textDim,lineHeight:1.6}},"No plays generated — no earnings catalyst, low IV, or no directional bias."))])
-    );
-  }
+          React.createElement("div",{style:{marginTop:6,padding:"8px 10px",background:C.redDim+"40",borderRadius:6,border:"1px solid "+C.red+"15"}},React.createElement("div",{style:{fontSize:10,color:C.red+"80"}},"⚠ "+pl.risk_notes)))})
+      :[React.createElement("div",{key:"e",style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:24,textAlign:"center"}},React.createElement("div",{style:{fontSize:12,color:C.textDim,lineHeight:1.6}},"No plays — no earnings catalyst, low IV, or no directional bias."))]))}
 
   return React.createElement("div",{style:{display:"flex",gap:16,minHeight:"60vh"}},
-    React.createElement("div",{style:{width:320,flexShrink:0,background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:12,maxHeight:"70vh",overflowY:"auto"}},
-      React.createElement("div",{style:{fontSize:11,color:C.textDim,textTransform:"uppercase",letterSpacing:1,padding:"4px 8px",marginBottom:4}},"By Options Score"),
-      React.createElement("div",{style:{fontSize:10,color:"#475569",padding:"0 8px 8px"}},"Click to generate"),
-      opts.map(r=>React.createElement("div",{key:r.ticker,onClick:()=>loadPlays(r.ticker),style:{display:"grid",gridTemplateColumns:"54px 1fr 44px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:6,cursor:"pointer",background:sel===r.ticker?C.green+"10":"transparent",borderLeft:sel===r.ticker?"3px solid "+C.green:"3px solid transparent"}},
-        React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),
-        React.createElement("span",{style:{fontSize:11,color:C.textDim}},"$"+r.price),
-        React.createElement(Badge,{color:r.opt_score>=40?C.green:r.opt_score>=25?C.amber:C.textDim},r.opt_score)
-      ))
-    ),
-    React.createElement("div",{style:{flex:1}},detail)
-  );
+    React.createElement("div",{style:{width:320,flexShrink:0,background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:12,maxHeight:"70vh",overflowY:"auto"}},React.createElement("div",{style:{fontSize:11,color:C.textDim,textTransform:"uppercase",letterSpacing:1,padding:"4px 8px",marginBottom:4}},"By Options Score"),React.createElement("div",{style:{fontSize:10,color:"#475569",padding:"0 8px 8px"}},"Click to generate"),opts.map(r=>React.createElement("div",{key:r.ticker,onClick:()=>loadPlays(r.ticker),style:{display:"grid",gridTemplateColumns:"54px 1fr 44px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:6,cursor:"pointer",background:sel===r.ticker?C.green+"10":"transparent",borderLeft:sel===r.ticker?"3px solid "+C.green:"3px solid transparent"}},React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement("span",{style:{fontSize:11,color:C.textDim}},"$"+r.price),React.createElement(Badge,{color:r.opt_score>=40?C.green:r.opt_score>=25?C.amber:C.textDim},r.opt_score)))),
+    React.createElement("div",{style:{flex:1}},detail));
 }
 
-// ─── Backtest Tab (FULLY RESTORED with Recharts) ───
+// ─── Backtest Tab ───
 function BacktestTab({backtest:initialData}){
-  const [period,setPeriod]=useState(30);
-  const [data,setData]=useState(initialData);
-  const [loading,setLoading]=useState(false);
-
+  const [period,setPeriod]=useState(30);const [data,setData]=useState(initialData);const [loading,setLoading]=useState(false);
   const loadBT=useCallback(async(fwd)=>{setLoading(true);const d=await api("/backtest?days=180&forward_period="+fwd);if(d)setData(d);setLoading(false)},[]);
   useEffect(()=>{if(!data)loadBT(period)},[]);
-
   if(loading)return React.createElement("div",{style:{color:C.textDim,padding:40,textAlign:"center"}},"Running backtest...");
-  if(!data)return React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:8}},"Backtest"),React.createElement("div",{style:{fontSize:12,color:C.textDim}},"Loading... Analyzing historical scores vs returns."));
-
-  const sd=data.score_vs_returns||{};
-  const ld=data.layer_attribution||{};
-  const ed=data.earnings_timing||{};
-
-  // Quintile data
-  const quintileChart=[];
-  const ltQ=sd["Long-Term Score"];
-  if(ltQ&&!ltQ.error){Object.entries(ltQ).forEach(([label,s])=>{quintileChart.push({name:label,return:s.avg_return,winRate:s.win_rate,count:s.count})})}
-
-  // Layer alpha data
+  if(!data)return React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:8}},"Backtest"),React.createElement("div",{style:{fontSize:12,color:C.textDim}},"Loading..."));
+  const sd=data.score_vs_returns||{},ld=data.layer_attribution||{},ed=data.earnings_timing||{};
+  const quintileChart=[];const ltQ=sd["Long-Term Score"];
+  if(ltQ&&!ltQ.error)Object.entries(ltQ).forEach(([label,s])=>{quintileChart.push({name:label,"return":s.avg_return,winRate:s.win_rate,count:s.count})});
   const layerChart=[];
-  [["sec_filings","SEC Filings"],["insider_buying","Insider Buying"],["sentiment","Sentiment"],["whale_flow","Whale Flow"]].forEach(([k,l])=>{const v=ld[k];if(v&&v.alpha!=null)layerChart.push({name:l,alpha:v.alpha})});
-
-  // Earnings timing data
+  [["sec_filings","SEC Filings"],["insider_buying","Insider"],["sentiment","Sentiment"],["whale_flow","Whale Flow"]].forEach(([k,l])=>{const v=ld[k];if(v&&v.alpha!=null)layerChart.push({name:l,alpha:v.alpha})});
   const earningsChart=[];
-  if(ed.timing_buckets){Object.entries(ed.timing_buckets).forEach(([l,s])=>{if(s.count>0)earningsChart.push({name:l,return14d:s.avg_return_14d,return30d:s.avg_return_30d,winRate:s.win_rate_14d,count:s.count})})}
+  if(ed.timing_buckets)Object.entries(ed.timing_buckets).forEach(([l,s])=>{if(s.count>0)earningsChart.push({name:l,return14d:s.avg_return_14d,return30d:s.avg_return_30d,count:s.count})});
 
   return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:24}},
-    React.createElement(Tip,null,React.createElement("b",null,"Backtest:")," Scores grouped into quintiles (Q1=lowest, Q5=highest) and compared against actual forward returns. If the model works, Q5 should outperform Q1."),
-    // Period selector
+    React.createElement(Tip,null,React.createElement("b",null,"Backtest:")," Scores grouped into quintiles (Q1=lowest, Q5=highest) vs actual forward returns. If model works, Q5 outperforms Q1."),
     React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center"}},
-      React.createElement("span",{style:{fontSize:12,color:C.textDim}},"Forward period:"),
-      ...[14,30,60].map(p=>React.createElement("button",{key:p,onClick:()=>{setPeriod(p);loadBT(p)},style:{padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:mono,background:period===p?C.green+"15":C.bgCard,border:"1px solid "+(period===p?C.green+"40":C.border),color:period===p?C.green:C.textDim}},p+"d")),
-      React.createElement("span",{style:{fontSize:11,color:C.textDim,marginLeft:"auto"}},(sd.total_observations||0)+" observations")
-    ),
-    // Correlations
+      React.createElement("span",{style:{fontSize:12,color:C.textDim}},"Forward:"),
+      [14,30,60].map(p=>React.createElement("button",{key:p,onClick:()=>{setPeriod(p);loadBT(p)},style:{padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:mono,background:period===p?C.green+"15":C.bgCard,border:"1px solid "+(period===p?C.green+"40":C.border),color:period===p?C.green:C.textDim}},p+"d")),
+      React.createElement("span",{style:{fontSize:11,color:C.textDim,marginLeft:"auto"}},(sd.total_observations||0)+" obs")),
     sd.lt_correlation!=null&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},
-      React.createElement(Metric,{label:"LT Score ↔ Return",value:sd.lt_correlation?.toFixed(3)||"—",color:sd.lt_correlation>0.1?C.green:sd.lt_correlation<-0.05?C.red:C.amber,sub:sd.lt_correlation>0.15?"Strong signal ✓":sd.lt_correlation>0.05?"Weak signal":"No signal yet"}),
-      React.createElement(Metric,{label:"Opt Score ↔ Return",value:sd.opt_correlation?.toFixed(3)||"—",color:sd.opt_correlation>0.1?C.green:sd.opt_correlation<-0.05?C.red:C.amber})
-    ),
-    // Quintile chart (Recharts BarChart RESTORED)
+      React.createElement(Metric,{label:"LT ↔ Return",value:sd.lt_correlation?.toFixed(3)||"—",color:sd.lt_correlation>0.1?C.green:sd.lt_correlation<-0.05?C.red:C.amber,sub:sd.lt_correlation>0.15?"Strong ✓":sd.lt_correlation>0.05?"Weak":"No signal"}),
+      React.createElement(Metric,{label:"Opt ↔ Return",value:sd.opt_correlation?.toFixed(3)||"—",color:sd.opt_correlation>0.1?C.green:sd.opt_correlation<-0.05?C.red:C.amber})),
     quintileChart.length>0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
-      React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"Score Quintile → Avg Return"),
+      React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"Score Quintile → Return"),
       React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Does scoring predict "+period+"-day returns?"),
-      React.createElement(ResponsiveContainer,{width:"100%",height:260},
-        React.createElement(BarChart,{data:quintileChart,margin:{top:8,right:16,bottom:4,left:0}},
-          React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:C.border}),
-          React.createElement(XAxis,{dataKey:"name",tick:{fill:C.textDim,fontSize:10}}),
-          React.createElement(YAxis,{tick:{fill:C.textDim,fontSize:10},tickFormatter:v=>v+"%"}),
-          React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
-          React.createElement(Bar,{dataKey:"return",radius:[4,4,0,0]},...quintileChart.map((d,i)=>React.createElement(Cell,{key:i,fill:d.return>=0?C.green:C.red,fillOpacity:0.75})))
-        )
-      ),
-      React.createElement("div",{style:{display:"flex",gap:16,marginTop:8}},...quintileChart.map(d=>React.createElement("div",{key:d.name,style:{fontSize:10,color:C.textDim,textAlign:"center",flex:1}},"n="+d.count+" | "+(d.winRate||0).toFixed(0)+"%w")))
-    ),
-    // Layer alpha chart (Recharts horizontal BarChart RESTORED)
+      React.createElement(SvgBarChart,{data:quintileChart,dataKey:"return",labelKey:"name",height:260,colorFn:(d,v)=>v>=0?C.green:C.red}),
+      React.createElement("div",{style:{display:"flex",gap:16,marginTop:8}},quintileChart.map(d=>React.createElement("div",{key:d.name,style:{fontSize:10,color:C.textDim,textAlign:"center",flex:1}},"n="+d.count+" | "+(d.winRate||0).toFixed(0)+"%w")))),
     layerChart.length>0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
-      React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"Intelligence Layer Alpha"),
-      React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Return difference: bullish signal vs bearish/absent"),
-      React.createElement(ResponsiveContainer,{width:"100%",height:200},
-        React.createElement(BarChart,{data:layerChart,layout:"vertical",margin:{top:4,right:16,bottom:4,left:80}},
-          React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:C.border}),
-          React.createElement(XAxis,{type:"number",tick:{fill:C.textDim,fontSize:10},tickFormatter:v=>(v>0?"+":"")+v+"%"}),
-          React.createElement(YAxis,{type:"category",dataKey:"name",tick:{fill:C.textMid,fontSize:12},width:80}),
-          React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
-          React.createElement(Bar,{dataKey:"alpha",radius:[0,4,4,0]},...layerChart.map((d,i)=>React.createElement(Cell,{key:i,fill:d.alpha>=0?C.green:C.red,fillOpacity:0.8})))
-        )
-      )
-    ),
-    // Earnings timing chart (RESTORED — grouped bars 14d vs 30d)
+      React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"Layer Alpha"),
+      React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Return difference: signal present vs absent"),
+      React.createElement(SvgHorizBarChart,{data:layerChart,dataKey:"alpha",labelKey:"name",height:180})),
     earningsChart.length>0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:20}},
       React.createElement("h2",{style:{fontSize:18,fontWeight:800,marginBottom:2}},"Earnings Entry Timing"),
       React.createElement("p",{style:{fontSize:12,color:C.textDim,marginBottom:12}},"Best entry: "+(ed.best_entry_window||"—")),
-      React.createElement(ResponsiveContainer,{width:"100%",height:220},
-        React.createElement(BarChart,{data:earningsChart,margin:{top:8,right:16,bottom:4,left:0}},
-          React.createElement(CartesianGrid,{strokeDasharray:"3 3",stroke:C.border}),
-          React.createElement(XAxis,{dataKey:"name",tick:{fill:C.textDim,fontSize:10}}),
-          React.createElement(YAxis,{tick:{fill:C.textDim,fontSize:10},tickFormatter:v=>v+"%"}),
-          React.createElement(Tooltip,{contentStyle:{background:C.bgCard,border:"1px solid "+C.border,borderRadius:6,fontSize:12,color:C.text}}),
-          React.createElement(Bar,{dataKey:"return14d",name:"14d Return",fill:C.blue,fillOpacity:0.7,radius:[4,4,0,0]}),
-          React.createElement(Bar,{dataKey:"return30d",name:"30d Return",fill:C.purple,fillOpacity:0.7,radius:[4,4,0,0]}),
-          React.createElement(Legend,{wrapperStyle:{fontSize:11,color:C.textDim}})
-        )
-      )
-    ),
-    // Fallback
-    quintileChart.length===0&&layerChart.length===0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:6}},"Backtest needs more data"),React.createElement("div",{style:{fontSize:12,color:C.textDim}},"Run scans over multiple days to build historical score data for backtesting."))
+      React.createElement(SvgGroupedBarChart,{data:earningsChart,bars:[{key:"return14d",name:"14d Return",color:C.blue},{key:"return30d",name:"30d Return",color:C.purple}],labelKey:"name",height:220})),
+    quintileChart.length===0&&layerChart.length===0&&React.createElement("div",{style:{background:C.bgCard,borderRadius:10,border:"1px solid "+C.border,padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:6}},"Need more data"),React.createElement("div",{style:{fontSize:12,color:C.textDim}},"Run scans over multiple days to build backtest history."))
   );
 }
 
-// ─── Main App ───
+// ─── App Shell ───
 function App(){
-  const [tab,setTab]=useState("overview");
-  const [stats,setStats]=useState(null);
-  const [latest,setLatest]=useState(null);
-  const [backtest,setBacktest]=useState(null);
-  const [scanStatus,setScanStatus]=useState(null);
-  const [online,setOnline]=useState(null);
-
-  useEffect(()=>{(async()=>{
-    const s=await api("/stats");
-    if(s){setStats(s);setOnline(true)}else{setOnline(false)}
-    const l=await api("/scores/latest?limit=50");
-    if(l)setLatest(l);
-    // Load backtest async — don't block
-    api("/backtest?days=180&forward_period=30").then(b=>{if(b)setBacktest(b)});
-  })()},[]);
-
-  const triggerScan=async()=>{
-    setScanStatus("running");
-    await fetch("/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
-    const poll=setInterval(async()=>{
-      const s=await api("/scan/status");
-      if(s&&!s.running){clearInterval(poll);setScanStatus("done");
-        const ns=await api("/stats");if(ns)setStats(ns);
-        const nl=await api("/scores/latest?limit=50");if(nl)setLatest(nl);
-      }
-    },3000);
-  };
-
-  const TabBtn=({active,onClick,children,icon})=>React.createElement("button",{onClick,style:{padding:"10px 20px",background:active?C.green+"12":"transparent",border:"1px solid "+(active?C.green+"40":C.border),borderRadius:8,color:active?C.green:C.textDim,fontSize:13,fontWeight:active?700:500,cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6,fontFamily:mono}},icon&&React.createElement("span",{style:{fontSize:15}},icon),children);
-
-  return React.createElement("div",{style:{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'DM Sans',-apple-system,sans-serif"}},
-    // Header
-    React.createElement("header",{style:{padding:"16px 28px",borderBottom:"1px solid "+C.border,display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(180deg,"+C.bgCard+","+C.bg+")"}},
-      React.createElement("div",{style:{display:"flex",alignItems:"center",gap:12}},
-        React.createElement("span",{style:{fontSize:22}},"🛡️"),
-        React.createElement("div",null,React.createElement("h1",{style:{fontSize:18,fontWeight:800,margin:0,letterSpacing:-.5,color:C.green}},"CyberScreener"),React.createElement("span",{style:{fontSize:10,color:C.textDim,letterSpacing:2,textTransform:"uppercase"}},"Cybersecurity Investment Intelligence"))
-      ),
-      React.createElement("div",{style:{display:"flex",alignItems:"center",gap:12}},
-        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},React.createElement("div",{style:{width:7,height:7,borderRadius:"50%",background:online===true?C.green:online===false?C.red:C.amber,boxShadow:online===true?"0 0 8px "+C.green+"60":"none"}}),React.createElement("span",{style:{fontSize:11,color:C.textDim}},online===true?"API Online":online===false?"API Offline":"Checking...")),
-        React.createElement("button",{onClick:triggerScan,disabled:scanStatus==="running",style:{padding:"8px 18px",borderRadius:6,border:"1px solid "+C.green+"40",background:scanStatus==="running"?C.bgCard:C.green+"15",color:scanStatus==="running"?C.textDim:C.green,fontSize:12,fontWeight:700,cursor:scanStatus==="running"?"wait":"pointer",fontFamily:mono}},scanStatus==="running"?"⟳ Scanning...":scanStatus==="done"?"✓ Complete":"▶ Run Scan")
-      )
-    ),
-    // Offline banner
-    online===false&&React.createElement("div",{style:{padding:"12px 28px",background:C.redDim,borderBottom:"1px solid "+C.red+"30",fontSize:12,color:C.red}},React.createElement("strong",null,"API not reachable. "),"Check that the server is running on Railway or locally."),
-    // Tabs
-    React.createElement("nav",{style:{padding:"12px 28px",display:"flex",gap:8,borderBottom:"1px solid "+C.border}},
-      React.createElement(TabBtn,{active:tab==="overview",onClick:()=>setTab("overview"),icon:"◉"},"Overview"),
-      React.createElement(TabBtn,{active:tab==="scores",onClick:()=>setTab("scores"),icon:"◆"},"Scores"),
-      React.createElement(TabBtn,{active:tab==="plays",onClick:()=>setTab("plays"),icon:"⚡"},"Plays"),
-      React.createElement(TabBtn,{active:tab==="backtest",onClick:()=>setTab("backtest"),icon:"◈"},"Backtest")
-    ),
-    // Content
-    React.createElement("main",{style:{padding:"24px 28px",maxWidth:1280,margin:"0 auto"}},
-      tab==="overview"&&React.createElement(OverviewTab,{stats,latest}),
-      tab==="scores"&&React.createElement(ScoresTab,{latest}),
-      tab==="plays"&&React.createElement(PlaysTab,{latest}),
-      tab==="backtest"&&React.createElement(BacktestTab,{backtest})
-    ),
-    // Footer
-    React.createElement("footer",{style:{padding:"16px 28px",borderTop:"1px solid "+C.border,textAlign:"center"}},React.createElement("span",{style:{fontSize:10,color:C.textDim}},"CyberScreener v2.0 — Not financial advice. Scores are algorithmic signals, not buy/sell recommendations."))
+  const [tab,setTab]=useState("overview");const [stats,setStats]=useState(null);const [latest,setLatest]=useState(null);const [backtest,setBacktest]=useState(null);const [scanStatus,setScanStatus]=useState(null);const [online,setOnline]=useState(null);
+  useEffect(()=>{(async()=>{const s=await api("/stats");if(s){setStats(s);setOnline(true)}else{setOnline(false)}const l=await api("/scores/latest?limit=50");if(l)setLatest(l);api("/backtest?days=180&forward_period=30").then(b=>{if(b)setBacktest(b)})})()},[]);
+  const triggerScan=async()=>{setScanStatus("running");await fetch("/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});const poll=setInterval(async()=>{const s=await api("/scan/status");if(s&&!s.running){clearInterval(poll);setScanStatus("done");const ns=await api("/stats");if(ns)setStats(ns);const nl=await api("/scores/latest?limit=50");if(nl)setLatest(nl)}},3000)};
+  const TabBtn=({active,onClick,children,icon})=>React.createElement("button",{onClick,style:{padding:"10px 20px",background:active?C.green+"12":"transparent",border:"1px solid "+(active?C.green+"40":C.border),borderRadius:8,color:active?C.green:C.textDim,fontSize:13,fontWeight:active?700:500,cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontFamily:mono}},icon&&React.createElement("span",{style:{fontSize:15}},icon),children);
+  return React.createElement("div",{style:{minHeight:"100vh",background:C.bg}},
+    React.createElement("header",{style:{padding:"16px 28px",borderBottom:"1px solid "+C.border,display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(180deg,"+C.bgCard+","+C.bg+")"}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:12}},React.createElement("span",{style:{fontSize:22}},"🛡️"),React.createElement("div",null,React.createElement("h1",{style:{fontSize:18,fontWeight:800,margin:0,color:C.green}},"CyberScreener"),React.createElement("span",{style:{fontSize:10,color:C.textDim,letterSpacing:2,textTransform:"uppercase"}},"Cybersecurity Investment Intelligence"))),React.createElement("div",{style:{display:"flex",alignItems:"center",gap:12}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},React.createElement("div",{style:{width:7,height:7,borderRadius:"50%",background:online===true?C.green:online===false?C.red:C.amber,boxShadow:online===true?"0 0 8px "+C.green+"60":"none"}}),React.createElement("span",{style:{fontSize:11,color:C.textDim}},online===true?"API Online":online===false?"API Offline":"Checking...")),React.createElement("button",{onClick:triggerScan,disabled:scanStatus==="running",style:{padding:"8px 18px",borderRadius:6,border:"1px solid "+C.green+"40",background:scanStatus==="running"?C.bgCard:C.green+"15",color:scanStatus==="running"?C.textDim:C.green,fontSize:12,fontWeight:700,cursor:scanStatus==="running"?"wait":"pointer",fontFamily:mono}},scanStatus==="running"?"⟳ Scanning...":scanStatus==="done"?"✓ Complete":"▶ Run Scan"))),
+    online===false&&React.createElement("div",{style:{padding:"12px 28px",background:C.redDim,borderBottom:"1px solid "+C.red+"30",fontSize:12,color:C.red}},React.createElement("strong",null,"API not reachable.")," Check that the server is running."),
+    React.createElement("nav",{style:{padding:"12px 28px",display:"flex",gap:8,borderBottom:"1px solid "+C.border}},React.createElement(TabBtn,{active:tab==="overview",onClick:()=>setTab("overview"),icon:"◉"},"Overview"),React.createElement(TabBtn,{active:tab==="scores",onClick:()=>setTab("scores"),icon:"◆"},"Scores"),React.createElement(TabBtn,{active:tab==="plays",onClick:()=>setTab("plays"),icon:"⚡"},"Plays"),React.createElement(TabBtn,{active:tab==="backtest",onClick:()=>setTab("backtest"),icon:"◈"},"Backtest")),
+    React.createElement("main",{style:{padding:"24px 28px",maxWidth:1280,margin:"0 auto"}},tab==="overview"&&React.createElement(OverviewTab,{stats,latest}),tab==="scores"&&React.createElement(ScoresTab,{latest}),tab==="plays"&&React.createElement(PlaysTab,{latest}),tab==="backtest"&&React.createElement(BacktestTab,{backtest})),
+    React.createElement("footer",{style:{padding:"16px 28px",borderTop:"1px solid "+C.border,textAlign:"center"}},React.createElement("span",{style:{fontSize:10,color:C.textDim}},"CyberScreener v2.0 — Not financial advice."))
   );
 }
-
 ReactDOM.render(React.createElement(App),document.getElementById("root"));
 </script>
 </body>
