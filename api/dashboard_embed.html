@@ -42,8 +42,9 @@ if(typeof Recharts!=='undefined')document.getElementById('ldst').textContent='Re
 else document.getElementById('ldst').textContent='Recharts global not found - keys: '+Object.keys(window).filter(function(k){return /chart/i.test(k)}).join(',');
 </script>
 <script type="text/babel">
+const _R=window.Recharts||window.recharts||Object.values(window).find(v=>v&&v.LineChart&&v.BarChart)||{};
 const {useState,useEffect,useCallback,useRef}=React;
-const {LineChart,Line,BarChart,Bar,XAxis,YAxis,Tooltip,ResponsiveContainer,CartesianGrid,Cell,Legend,Area,AreaChart}=Recharts;
+const {LineChart,Line,BarChart,Bar,XAxis,YAxis,Tooltip,ResponsiveContainer,CartesianGrid,Cell,Legend,Area,AreaChart}=_R;
 
 const C={bg:"#0a0e17",bgCard:"#0f1520",bgHover:"#141c2b",border:"#1a2235",borderLight:"#243049",green:"#00e5a0",greenDim:"#00e5a030",red:"#ff3b5c",redDim:"#ff3b5c30",amber:"#ffb020",amberDim:"#ffb02030",blue:"#3b82f6",blueDim:"#3b82f620",purple:"#a855f7",text:"#e2e8f0",textDim:"#64748b",textMid:"#94a3b8"};
 const mono="'JetBrains Mono',monospace";
