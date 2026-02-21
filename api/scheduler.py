@@ -39,15 +39,18 @@ def run_scheduled_scan():
         if (i + 1) % 5 == 0 or i == 0:
             logger.info(f"  Scanning {ticker} ({i+1}/{total})")
 
-    results = run_scan(callback=log_progress)
+    results = run_scan(
+        callback=log_progress,
+        enable_sec=True,
+        enable_sentiment=True,
+    )
     duration = time.time() - start
 
     if results:
         scan_id = save_scan(
             results,
-            intel_layers=["sec"],
+            intel_layers=["sec", "sentiment", "whale"],
             duration_seconds=duration,
-            config={"mode": "scheduled", "tickers": len(ALL_TICKERS)},
         )
         logger.info(f"✅ Scan #{scan_id} complete: {len(results)} tickers in {duration:.1f}s "
                      f"(total scans in DB: {get_scan_count()})")
