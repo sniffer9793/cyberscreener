@@ -45,13 +45,12 @@ init_db()
 # Serve dashboard HTML from the API itself
 from fastapi.responses import HTMLResponse
 
-DASHBOARD_HTML = open(Path(__file__).parent / "dashboard_embed.html").read() if (Path(__file__).parent / "dashboard_embed.html").exists() else ""
-
 @app.get("/", response_class=HTMLResponse)
 def serve_dashboard():
-    if DASHBOARD_HTML:
-        return DASHBOARD_HTML
-    return "<h1>Dashboard loading...</h1>"
+    dash_path = Path(__file__).parent / "dashboard_embed.html"
+    if dash_path.exists():
+        return dash_path.read_text()
+    return f"<h1>Dashboard not found at {dash_path}</h1>"
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def serve_dashboard_alt():
