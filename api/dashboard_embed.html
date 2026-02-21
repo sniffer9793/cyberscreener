@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CyberScreener</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0e17;color:#e2e8f0;font-family:'DM Sans',-apple-system,sans-serif}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0f1520}::-webkit-scrollbar-thumb{background:#243049;border-radius:3px}
+code{font-family:'JetBrains Mono',monospace;background:#141c2b;padding:2px 6px;border-radius:4px;font-size:12px}
+.mono{font-family:'JetBrains Mono',monospace}
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh}
+.login-box{background:#0f1520;border:1px solid #1a2235;border-radius:12px;padding:40px;width:360px;text-align:center}
+.login-box h1{font-size:20px;font-weight:800;color:#00e5a0;margin-bottom:4px}
+.login-box p{font-size:12px;color:#64748b;margin-bottom:24px}
+.login-box input{width:100%;padding:12px 16px;background:#0a0e17;border:1px solid #243049;border-radius:8px;color:#e2e8f0;font-size:14px;outline:none;margin-bottom:12px;font-family:'JetBrains Mono',monospace}
+.login-box input:focus{border-color:#00e5a040}
+.login-box button{width:100%;padding:12px;background:#00e5a015;border:1px solid #00e5a040;border-radius:8px;color:#00e5a0;font-size:13px;font-weight:700;cursor:pointer;font-family:'JetBrains Mono',monospace}
+.login-box button:hover{background:#00e5a025}
+.login-err{color:#ff3b5c;font-size:12px;margin-top:8px}
+.hdr{padding:16px 28px;border-bottom:1px solid #1a2235;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,#0f1520,#0a0e17)}
+.tabs{padding:12px 28px;display:flex;gap:8px;border-bottom:1px solid #1a2235}
+.tab{padding:10px 20px;background:transparent;border:1px solid #1a2235;border-radius:8px;color:#64748b;font-size:13px;font-weight:500;cursor:pointer;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:6px}
+.tab.on{background:#00e5a012;border-color:#00e5a040;color:#00e5a0;font-weight:700}
+.main{padding:24px 28px;max-width:1280px;margin:0 auto}
+.card{background:#0f1520;border:1px solid #1a2235;border-radius:10px;padding:20px}
+.grid{display:grid;gap:12px}
+.g5{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.g2{grid-template-columns:1fr 1fr}
+.metric{padding:14px 16px;background:#0f1520;border-radius:8px;border:1px solid #1a2235}
+.metric-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.metric-val{font-size:26px;font-weight:800;font-family:'JetBrains Mono',monospace;line-height:1}
+.metric-sub{font-size:11px;color:#64748b;margin-top:4px}
+.sbar{display:flex;align-items:center;gap:8px}
+.sbar-track{flex:1;height:6px;background:#1a2235;border-radius:3px;overflow:hidden}
+.sbar-fill{height:100%;border-radius:3px;transition:width 0.6s ease}
+.sbar-num{font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;min-width:28px}
+.row{display:grid;grid-template-columns:20px 60px 1fr 70px;align-items:center;gap:8px;padding:4px 0}
+.row-tk{font-size:13px;font-weight:700;color:#e2e8f0;font-family:'JetBrains Mono',monospace}
+.dim{color:#64748b}.mid{color:#94a3b8}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:0.5px}
+.sec-title{font-size:18px;font-weight:800;letter-spacing:-0.3px;margin-bottom:2px}
+.sec-sub{font-size:12px;color:#64748b}
+.btn-scan{padding:8px 18px;border-radius:6px;border:1px solid #00e5a040;background:#00e5a015;color:#00e5a0;font-size:12px;font-weight:700;cursor:pointer;font-family:'JetBrains Mono',monospace}
+.btn-period{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:'JetBrains Mono',monospace;border:1px solid #1a2235;background:#0f1520;color:#64748b}
+.btn-period.on{background:#00e5a015;border-color:#00e5a040;color:#00e5a0}
+.ticker-list{width:320px;flex-shrink:0;max-height:70vh;overflow-y:auto}
+.ticker-row{display:grid;grid-template-columns:54px 1fr 44px 44px;align-items:center;gap:6px;padding:8px 10px;border-radius:6px;cursor:pointer;border-left:3px solid transparent}
+.ticker-row:hover{background:#141c2b}
+.ticker-row.sel{background:#00e5a010;border-left-color:#00e5a0}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.dot-on{background:#00e5a0;box-shadow:0 0 8px #00e5a060}.dot-off{background:#ff3b5c}
+@media(max-width:768px){.g2{grid-template-columns:1fr}.tabs{flex-wrap:wrap}.main{padding:16px}.ticker-list{width:100%}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+let authToken=localStorage.getItem('cs_token'),currentTab='overview';
+let D={stats:null,latest:null,backtest:null};
+const $=s=>document.querySelector(s);
+
+async function api(path){
+  try{
+    const h={};if(authToken)h['Authorization']='Bearer '+authToken;
+    const r=await fetch(path,{headers:h});
+    if(r.status===401){showLogin();return null}
+    if(!r.ok)return null;
+    return await r.json();
+  }catch(e){return null}
+}
+async function apiPost(path,body){
+  try{
+    const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.status===401){showLogin();return null}
+    return await r.json();
+  }catch(e){return null}
+}
+
+function showLogin(err){
+  $('#app').innerHTML=`<div class="login-wrap"><div class="login-box">
+    <div style="font-size:32px;margin-bottom:12px">🛡️</div>
+    <h1>CyberScreener</h1><p>Investment Intelligence Dashboard</p>
+    <input type="password" id="pw" placeholder="Enter password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">▶ Access Dashboard</button>
+    ${err?'<div class="login-err">'+err+'</div>':''}
+  </div></div>`;
+  setTimeout(()=>{const e=$('#pw');if(e)e.focus()},100);
+}
+
+async function doLogin(){
+  const pw=$('#pw')?.value;if(!pw)return;
+  const r=await apiPost('/auth',{password:pw});
+  if(r&&r.token){authToken=r.token;localStorage.setItem('cs_token',r.token);loadDash();}
+  else showLogin('Wrong password');
+}
+
+async function loadDash(){
+  $('#app').innerHTML='<div style="padding:60px;text-align:center;color:#64748b">Loading...</div>';
+  const[s,l,b]=await Promise.all([api('/stats'),api('/scores/latest?limit=50'),api('/backtest?days=180&forward_period=30')]);
+  if(!s){showLogin();return}
+  D.stats=s;D.latest=l;D.backtest=b;render();
+}
+
+function sc(s,h=60,m=35){return s>=h?'#00e5a0':s>=m?'#ffb020':'#ff3b5c'}
+function sbar(score){
+  const p=Math.max(0,Math.min(100,score)),c=sc(score);
+  return`<div class="sbar"><div class="sbar-track"><div class="sbar-fill" style="width:${p}%;background:${c}"></div></div><span class="sbar-num" style="color:${c}">${score}</span></div>`;
+}
+function met(label,value,color,sub){
+  return`<div class="metric"><div class="metric-label">${label}</div><div class="metric-val" style="color:${color||'#e2e8f0'}">${value}</div>${sub?'<div class="metric-sub">'+sub+'</div>':''}</div>`;
+}
+
+function render(){
+  const s=D.stats||{};
+  $('#app').innerHTML=`
+    <div class="hdr">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:22px">🛡️</span>
+        <div><div style="font-size:18px;font-weight:800;color:#00e5a0;letter-spacing:-0.5px">CyberScreener</div>
+        <div style="font-size:10px;color:#64748b;letter-spacing:2px;text-transform:uppercase">Investment Intelligence</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="dot dot-on"></span><span class="dim" style="font-size:11px">Online</span>
+        <button class="btn-scan" id="scanBtn" onclick="doScan()">▶ Run Scan</button>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab ${currentTab==='overview'?'on':''}" onclick="go('overview')">◉ Overview</button>
+      <button class="tab ${currentTab==='scores'?'on':''}" onclick="go('scores')">◆ Score Explorer</button>
+      <button class="tab ${currentTab==='backtest'?'on':''}" onclick="go('backtest')">◈ Backtest</button>
+    </nav>
+    <div class="main" id="ct"></div>
+    <footer style="padding:16px 28px;border-top:1px solid #1a2235;text-align:center">
+      <span style="font-size:10px;color:#64748b">CyberScreener v2.0 — Not financial advice.</span>
+    </footer>`;
+  renderTab();
+}
+function go(t){currentTab=t;render()}
+
+function renderTab(){
+  if(currentTab==='overview')renderOverview();
+  else if(currentTab==='scores')renderScores();
+  else if(currentTab==='backtest')renderBacktest();
+}
+
+function renderOverview(){
+  const s=D.stats||{},res=D.latest?.results||[];
+  const topLT=res.slice(0,10),topOpt=[...res].sort((a,b)=>b.opt_score-a.opt_score).slice(0,10);
+  const rsi=[...res].sort((a,b)=>a.rsi-b.rsi);
+  let h=`<div class="grid g5">
+    ${met('Total Scans',s.total_scans||0)}${met('Tickers',s.unique_tickers_tracked||0)}
+    ${met('Score Records',(s.total_score_records||0).toLocaleString())}
+    ${met('Price Snapshots',(s.total_price_snapshots||0).toLocaleString())}
+    ${met('Last Scan',s.last_scan?new Date(s.last_scan).toLocaleDateString():'—')}
+  </div><div class="grid g2" style="margin-top:16px">
+    <div class="card"><div class="sec-title">📈 Long-Term Scores</div><div class="sec-sub" style="margin-bottom:12px">Latest scan</div>
+      ${topLT.map((r,i)=>`<div class="row"><span class="dim" style="font-size:11px">${i+1}</span><span class="row-tk">${r.ticker}</span>${sbar(r.lt_score)}<span class="dim" style="font-size:12px;text-align:right">$${r.price}</span></div>`).join('')}
+    </div>
+    <div class="card"><div class="sec-title">⚡ Options Scores</div><div class="sec-sub" style="margin-bottom:12px">Latest scan</div>
+      ${topOpt.map((r,i)=>`<div class="row"><span class="dim" style="font-size:11px">${i+1}</span><span class="row-tk">${r.ticker}</span>${sbar(r.opt_score)}<span class="dim" style="font-size:12px;text-align:right">RSI ${r.rsi||'—'}</span></div>`).join('')}
+    </div>
+  </div>`;
+  if(rsi.length>0){
+    h+=`<div class="card" style="margin-top:16px"><div class="sec-title">RSI Heatmap</div><div class="sec-sub" style="margin-bottom:12px">Sector technicals</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:flex-end;height:140px">
+        ${rsi.map(r=>{const c=r.rsi<30?'#00e5a0':r.rsi>70?'#ff3b5c':'#ffb020';
+          return`<div style="flex:1;min-width:20px;text-align:center;display:flex;flex-direction:column;justify-content:flex-end;height:100%">
+            <div style="height:${Math.max(r.rsi*1.2,4)}px;background:${c};opacity:0.7;border-radius:3px 3px 0 0;margin:0 1px"></div>
+            <div style="font-size:7px;color:#64748b;margin-top:2px;transform:rotate(-50deg);white-space:nowrap" class="mono">${r.ticker}</div>
+          </div>`;}).join('')}
+      </div></div>`;
+  }
+  $('#ct').innerHTML=h;
+}
+
+let selTk=null,tkHist=null;
+function renderScores(){
+  const res=D.latest?.results||[];
+  let det='<div class="card" style="padding:40px;text-align:center"><div class="dim">← Select a ticker</div></div>';
+  if(selTk&&tkHist?.history?.length){
+    const h=tkHist.history,last=h[h.length-1],first=h[0];
+    const ltCh=last.lt_score-first.lt_score,pCh=last.price&&first.price?((last.price/first.price-1)*100).toFixed(1):null;
+    det=`<div class="card">
+      <div class="sec-title">${selTk} — Score History</div><div class="sec-sub">${tkHist.data_points} data points</div>
+      <div class="grid g2" style="margin-top:16px">
+        ${met('LT Score',last.lt_score,sc(last.lt_score))}${met('Opt Score',last.opt_score,sc(last.opt_score,40,25))}
+        ${met('LT Change',(ltCh>=0?'+':'')+ltCh,ltCh>=0?'#00e5a0':'#ff3b5c')}${met('Price','$'+last.price,'#e2e8f0',pCh?pCh+'%':'')}
+      </div>
+      <div style="margin-top:20px"><div style="font-size:13px;font-weight:700;margin-bottom:8px">Score Trend</div>
+        ${h.filter((_,i)=>i%Math.max(1,Math.floor(h.length/20))===0).map(p=>{
+          const d=new Date(p.timestamp).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+          return`<div style="display:grid;grid-template-columns:60px 1fr 1fr 40px 40px;align-items:center;gap:6px;padding:2px 0">
+            <span class="dim" style="font-size:10px">${d}</span>
+            <div style="height:4px;background:#1a2235;border-radius:2px;overflow:hidden"><div style="width:${Math.min(100,p.lt_score)}%;height:100%;background:#00e5a0;border-radius:2px"></div></div>
+            <div style="height:4px;background:#1a2235;border-radius:2px;overflow:hidden"><div style="width:${Math.min(100,p.opt_score)}%;height:100%;background:#3b82f6;border-radius:2px"></div></div>
+            <span class="mono" style="font-size:10px;color:#00e5a0">${p.lt_score}</span>
+            <span class="mono" style="font-size:10px;color:#3b82f6">${p.opt_score}</span>
+          </div>`;}).join('')}
+        <div style="display:flex;gap:16px;margin-top:8px"><span style="font-size:10px;color:#00e5a0">■ LT</span><span style="font-size:10px;color:#3b82f6">■ Opt</span></div>
+      </div></div>`;
+  }else if(selTk){det='<div class="card" style="padding:40px;text-align:center"><div class="dim">Loading...</div></div>';}
+  $('#ct').innerHTML=`<div style="display:flex;gap:16px;min-height:60vh">
+    <div class="card ticker-list" style="padding:12px">
+      <div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:4px 8px;margin-bottom:8px">${res.length} tickers</div>
+      ${res.map(r=>`<div class="ticker-row ${selTk===r.ticker?'sel':''}" onclick="pickTk('${r.ticker}')">
+        <span class="row-tk">${r.ticker}</span><span class="dim" style="font-size:11px">$${r.price}</span>
+        <span class="badge" style="background:${sc(r.lt_score)}18;color:${sc(r.lt_score)};border:1px solid ${sc(r.lt_score)}30">${r.lt_score}</span>
+        <span class="badge" style="background:${sc(r.opt_score,40,25)}18;color:${sc(r.opt_score,40,25)};border:1px solid ${sc(r.opt_score,40,25)}30">${r.opt_score}</span>
+      </div>`).join('')}
+    </div><div style="flex:1">${det}</div></div>`;
+}
+async function pickTk(t){selTk=t;tkHist=null;renderScores();const d=await api('/scores/'+t+'?days=180');if(d){tkHist=d;renderScores();}}
+
+let btP=30;
+function renderBacktest(){
+  const d=D.backtest;
+  if(!d){$('#ct').innerHTML='<div class="card" style="padding:40px;text-align:center"><div style="font-size:36px;margin-bottom:12px">📊</div><div style="font-size:14px;font-weight:600">No backtest data</div></div>';return;}
+  const sd=d.score_vs_returns||{},ld=d.layer_attribution||{},ed=d.earnings_timing||{};
+  let h=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:20px">
+    <span class="dim" style="font-size:12px">Forward:</span>
+    ${[14,30,60].map(p=>`<button class="btn-period ${btP===p?'on':''}" onclick="chgP(${p})">${p}d</button>`).join('')}
+    <span class="dim" style="font-size:11px;margin-left:auto">${sd.total_observations||0} obs</span></div>`;
+  if(sd.lt_correlation!=null){
+    const c=sd.lt_correlation,o=sd.opt_correlation;
+    h+=`<div class="grid g2">${met('LT ↔ Return',c?.toFixed(3)||'—',c>0.1?'#00e5a0':c<-0.05?'#ff3b5c':'#ffb020',c>0.15?'Strong ✓':c>0.05?'Weak':'No signal')}
+    ${met('Opt ↔ Return',o?.toFixed(3)||'—',o>0.1?'#00e5a0':o<-0.05?'#ff3b5c':'#ffb020')}</div>`;
+  }
+  const ltQ=sd['Long-Term Score'];
+  if(ltQ&&!ltQ.error){
+    const maxR=Math.max(...Object.values(ltQ).map(v=>Math.abs(v.avg_return||0)),1);
+    h+=`<div class="card" style="margin-top:16px"><div class="sec-title">Score Quintile → Return</div><div class="sec-sub">Does scoring predict ${btP}d returns?</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;margin-top:16px;height:200px;padding-bottom:30px">
+        ${Object.entries(ltQ).map(([l,s])=>{const ht=Math.abs(s.avg_return||0)/maxR*150;const c=(s.avg_return||0)>=0?'#00e5a0':'#ff3b5c';
+          return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px">
+            <span class="mono" style="font-size:11px;color:${c};font-weight:700">${(s.avg_return||0)>0?'+':''}${(s.avg_return||0).toFixed(1)}%</span>
+            <div style="width:80%;height:${Math.max(ht,4)}px;background:${c};opacity:0.75;border-radius:4px"></div>
+            <span class="dim" style="font-size:9px;text-align:center">${l}</span>
+            <span class="dim" style="font-size:8px">n=${s.count} ${(s.win_rate||0).toFixed(0)}%w</span></div>`;}).join('')}
+      </div></div>`;
+  }
+  const layers=[['sec_filings','SEC'],['insider_buying','Insider'],['sentiment','Sentiment'],['whale_flow','Whale']];
+  const ld2=layers.filter(([k])=>ld[k]?.alpha!=null).map(([k,l])=>({n:l,a:ld[k].alpha}));
+  if(ld2.length>0){
+    const mx=Math.max(...ld2.map(d=>Math.abs(d.a)),1);
+    h+=`<div class="card" style="margin-top:16px"><div class="sec-title">Layer Alpha</div><div class="sec-sub">Bullish vs bearish signal return difference</div>
+      <div style="margin-top:16px">${ld2.map(d=>{const c=d.a>=0?'#00e5a0':'#ff3b5c';const w=Math.abs(d.a)/mx*60;
+        return`<div style="display:grid;grid-template-columns:80px 1fr 60px;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #1a2235">
+          <span class="mid" style="font-size:12px">${d.n}</span>
+          <div style="height:12px;background:${c};opacity:0.75;border-radius:4px;width:${Math.max(w,4)}%"></div>
+          <span class="mono" style="font-size:12px;color:${c};font-weight:700;text-align:right">${d.a>0?'+':''}${d.a.toFixed(1)}%</span></div>`;}).join('')}</div></div>`;
+  }
+  if(ed.timing_buckets){
+    const bk=Object.entries(ed.timing_buckets).filter(([,s])=>s.count>0);
+    if(bk.length>0){
+      h+=`<div class="card" style="margin-top:16px"><div class="sec-title">Earnings Timing</div><div class="sec-sub">Best: ${ed.best_entry_window||'—'}</div>
+        <div style="display:grid;grid-template-columns:repeat(${bk.length},1fr);gap:12px;margin-top:16px">
+          ${bk.map(([l,s])=>`<div style="text-align:center">
+            <div class="dim" style="font-size:11px;margin-bottom:8px">${l}</div>
+            <div class="mono" style="font-size:18px;font-weight:800;color:${(s.avg_return_14d||0)>=0?'#3b82f6':'#ff3b5c'}">${s.avg_return_14d!=null?((s.avg_return_14d>=0?'+':'')+s.avg_return_14d.toFixed(1)+'%'):'—'}</div>
+            <div class="dim" style="font-size:10px">14d</div>
+            <div class="mono" style="font-size:14px;color:#a855f7;margin-top:4px">${s.avg_return_30d!=null?((s.avg_return_30d>=0?'+':'')+s.avg_return_30d.toFixed(1)+'%'):'—'}</div>
+            <div class="dim" style="font-size:10px">30d</div>
+            <div class="dim" style="font-size:9px;margin-top:4px">n=${s.count}</div></div>`).join('')}
+        </div></div>`;
+    }
+  }
+  $('#ct').innerHTML=h;
+}
+async function chgP(p){btP=p;$('#ct').innerHTML='<div style="padding:40px;text-align:center;color:#64748b">Recalculating...</div>';const b=await api('/backtest?days=180&forward_period='+p);if(b)D.backtest=b;renderBacktest();}
+
+async function doScan(){
+  const b=$('#scanBtn');if(b){b.textContent='⟳ Scanning...';b.style.opacity='0.5';}
+  await apiPost('/scan',{});
+  const poll=setInterval(async()=>{const s=await api('/scan/status');if(s&&!s.running){clearInterval(poll);if(b){b.textContent='✓ Done';b.style.opacity='1';}
+    const[st,la]=await Promise.all([api('/stats'),api('/scores/latest?limit=50')]);if(st)D.stats=st;if(la)D.latest=la;render();}},3000);
+}
+
+// Init
+(async()=>{
+  if(authToken){const s=await api('/stats');if(s){D.stats=s;await loadDash();}else{authToken=null;localStorage.removeItem('cs_token');showLogin();}}
+  else showLogin();
+})();
+</script>
+</body>
+</html>
