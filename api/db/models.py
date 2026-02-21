@@ -381,3 +381,6 @@ def get_scan_count():
     count = conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
     conn.close()
     return count
+
+# Backward-compatible alias
+get_price_on_date = get_nearest_price
