@@ -330,13 +330,19 @@ def detect_whale_flow(ticker_obj, current_price, expiry_dates):
                 continue
 
             for _, row in df.iterrows():
-                strike = row.get("strike", 0)
-                vol = int(row.get("volume", 0) or 0)
-                oi = int(row.get("openInterest", 0) or 0)
-                iv = float(row.get("impliedVolatility", 0) or 0)
-                bid = float(row.get("bid", 0) or 0)
-                ask = float(row.get("ask", 0) or 0)
-                itm = row.get("inTheMoney", False)
+                try:
+                    import math
+                    def _safe_int(v): return 0 if v is None or (isinstance(v, float) and math.isnan(v)) else int(v)
+                    def _safe_float(v): return 0.0 if v is None or (isinstance(v, float) and math.isnan(v)) else float(v)
+                    strike = _safe_float(row.get("strike", 0))
+                    vol = _safe_int(row.get("volume", 0))
+                    oi = _safe_int(row.get("openInterest", 0))
+                    iv = _safe_float(row.get("impliedVolatility", 0))
+                    bid = _safe_float(row.get("bid", 0))
+                    ask = _safe_float(row.get("ask", 0))
+                    itm = bool(row.get("inTheMoney", False))
+                except Exception:
+                    continue
 
                 mid_price = (bid + ask) / 2 if ask > 0 else float(row.get("lastPrice", 0) or 0)
                 premium_total = vol * mid_price * 100  # Total $ flowing
