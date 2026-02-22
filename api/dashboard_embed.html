@@ -138,7 +138,7 @@ function ScoresTab({latest}){
   const [sel,setSel]=useState(null),[hist,setHist]=useState(null),[filter,setFilter]=useState("all");
   const results=latest?.results||[];const load=useCallback(async t=>{setSel(t);setHist(null);const d=await api("/scores/"+t+"?days=180");if(d)setHist(d)},[]);
   const lr=sel?results.find(r=>r.ticker===sel):null,L=hist?.history?.length?hist.history[hist.history.length-1]:null,F=hist?.history?.length?hist.history[0]:null;
-  const cd=hist?.history?.map(h=>({date:new Date(h.timestamp).toLocaleDateString("en-US",{month:"short",day:"numeric"}),lt_score:h.lt_score,opt_score:h.opt_score,price:h.price,rsi:h.rsi}))||[];
+  const cd=hist?.history?.map(h=>{const ts=h.timestamp||"";const dt=ts.includes("T")?new Date(ts):new Date(ts.replace(" ","T"));const ds=isNaN(dt)?"—":dt.toLocaleDateString("en-US",{month:"short",day:"numeric"});return({date:ds,lt_score:h.lt_score,opt_score:h.opt_score,price:h.price,rsi:h.rsi})})||[];
   const fl=filter==="all"?results:results.filter(r=>r.sector===filter);
   return React.createElement("div",{className:"fade-in",style:{display:"flex",gap:16,minHeight:"60vh"}},
     React.createElement("div",{style:{width:320,flexShrink:0,display:"flex",flexDirection:"column",gap:8}},

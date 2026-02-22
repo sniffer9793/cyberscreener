@@ -1387,6 +1387,111 @@ def generate_plays(ticker, price, chains, days_to_earnings=None, rsi=50, iv_30d=
                         "risk_notes": f"Max loss ${max_loss_val:,.0f}. Margin required."
                     })
 
+    # ── FALLBACK: Always generate at least one play if chains exist ──
+    # If no plays were generated above, the bias was too weak or strikes weren't found.
+    # Try ATM directional play as a fallback — let the Reality Check in the UI grade it.
+    if not plays:
+        # Fallback directional based on any lean, or default bullish if neutral
+        fb_type = "call" if bias != "bearish" else "put"
+        fb_dir = "Bullish" if fb_type == "call" else "Bearish"
+        fb_emoji = "📈" if fb_type == "call" else "📉"
+        fb_strike = find_best_strike(chains, fb_type, expiry, price, "atm")
+        if not fb_strike:
+            fb_strike = find_best_strike(chains, fb_type, expiry, price, "otm_near")
+        if fb_strike:
+            mid = (fb_strike["bid"] + fb_strike["ask"]) / 2 if fb_strike["ask"] > 0 else fb_strike["lastPrice"]
+            if mid > 0:
+                if fb_type == "call":
+                    be = fb_strike["strike"] + mid
+                    pct_be = ((be / price) - 1) * 100
+                else:
+                    be = fb_strike["strike"] - mid
+                    pct_be = ((price - be) / price) * 100
+                plays.append({
+                    "strategy": f"Long {fb_type.title()} (ATM)", "emoji": fb_emoji,
+                    "direction": f"{fb_dir} (weak conviction)",
+                    "action": f"BUY {ticker} ${fb_strike['strike']:.0f} {fb_type.title()}",
+                    "expiry": expiry, "dte": dte, "strike": fb_strike["strike"],
+                    "entry_price": round(mid, 2),
+                    "bid": fb_strike["bid"], "ask": fb_strike["ask"],
+                    "breakeven": round(be, 2),
+                    "pct_to_breakeven": round(pct_be, 1),
+                    "max_loss": round(mid * 100, 0),
+                    "max_gain": "Unlimited" if fb_type == "call" else f"${be * 100:,.0f}",
+                    "volume": int(fb_strike["volume"]),
+                    "open_interest": int(fb_strike["openInterest"]),
+                    "iv": round(fb_strike["iv"] * 100, 1),
+                    "rationale": f"Weak {fb_dir.lower()} lean — RSI {rsi:.0f}, "
+                                 f"{'above' if price_above_sma20 else 'below'} SMA20, "
+                                 f"{'above' if price_above_sma50 else 'below'} SMA50. "
+                                 f"No strong catalyst. Expected move: ±${expected_move:.2f} ({expected_move/price*100:.1f}%). "
+                                 f"Reality Check will flag if risk/reward is poor.",
+                    "risk_notes": f"Max loss ${mid * 100:,.0f} (premium). Weak setup — size small or skip."
+                })
+
+        # Also try a spread fallback
+        if bias != "bearish":
+            long_c = find_best_strike(chains, "call", expiry, price, "atm")
+            short_c = find_best_strike(chains, "call", expiry, price, "otm_far")
+            if long_c and short_c and short_c["strike"] > long_c["strike"]:
+                l_mid = (long_c["bid"] + long_c["ask"]) / 2 if long_c["ask"] > 0 else long_c["lastPrice"]
+                s_mid = (short_c["bid"] + short_c["ask"]) / 2 if short_c["ask"] > 0 else short_c["lastPrice"]
+                nd = l_mid - s_mid
+                if nd > 0:
+                    sw = short_c["strike"] - long_c["strike"]
+                    mp = (sw - nd) * 100
+                    ml = nd * 100
+                    bev = long_c["strike"] + nd
+                    rr = mp / ml if ml > 0 else 0
+                    plays.append({
+                        "strategy": "Bull Call Spread", "emoji": "📊",
+                        "direction": "Bullish (defined risk)",
+                        "action": f"BUY {ticker} ${long_c['strike']:.0f}C / SELL ${short_c['strike']:.0f}C",
+                        "expiry": expiry, "dte": dte,
+                        "strike": f"{long_c['strike']:.0f}/{short_c['strike']:.0f}",
+                        "entry_price": round(nd, 2), "bid": None, "ask": None,
+                        "breakeven": round(bev, 2),
+                        "pct_to_breakeven": round(((bev / price) - 1) * 100, 1),
+                        "max_loss": round(ml, 0),
+                        "max_gain": f"${mp:,.0f}",
+                        "volume": int(long_c["volume"] + short_c["volume"]),
+                        "open_interest": int(long_c["openInterest"] + short_c["openInterest"]),
+                        "iv": round(long_c["iv"] * 100, 1),
+                        "rationale": f"Defined-risk bullish fallback. R/R: {rr:.1f}:1. "
+                                     f"No strong catalyst — conservative play.",
+                        "risk_notes": f"Max loss ${ml:,.0f}, max gain ${mp:,.0f}. Weak setup."
+                    })
+        else:
+            long_p = find_best_strike(chains, "put", expiry, price, "atm")
+            short_p = find_best_strike(chains, "put", expiry, price, "otm_far")
+            if long_p and short_p and long_p["strike"] > short_p["strike"]:
+                l_mid = (long_p["bid"] + long_p["ask"]) / 2 if long_p["ask"] > 0 else long_p["lastPrice"]
+                s_mid = (short_p["bid"] + short_p["ask"]) / 2 if short_p["ask"] > 0 else short_p["lastPrice"]
+                nd = l_mid - s_mid
+                if nd > 0:
+                    sw = long_p["strike"] - short_p["strike"]
+                    mp = (sw - nd) * 100
+                    ml = nd * 100
+                    bev = long_p["strike"] - nd
+                    rr = mp / ml if ml > 0 else 0
+                    plays.append({
+                        "strategy": "Bear Put Spread", "emoji": "📊",
+                        "direction": "Bearish (defined risk)",
+                        "action": f"BUY {ticker} ${long_p['strike']:.0f}P / SELL ${short_p['strike']:.0f}P",
+                        "expiry": expiry, "dte": dte,
+                        "strike": f"{long_p['strike']:.0f}/{short_p['strike']:.0f}",
+                        "entry_price": round(nd, 2), "bid": None, "ask": None,
+                        "breakeven": round(bev, 2),
+                        "pct_to_breakeven": round(((price - bev) / price) * 100, 1),
+                        "max_loss": round(ml, 0),
+                        "max_gain": f"${mp:,.0f}",
+                        "volume": int(long_p["volume"] + short_p["volume"]),
+                        "open_interest": int(long_p["openInterest"] + short_p["openInterest"]),
+                        "iv": round(long_p["iv"] * 100, 1),
+                        "rationale": f"Defined-risk bearish fallback. R/R: {rr:.1f}:1.",
+                        "risk_notes": f"Max loss ${ml:,.0f}, max gain ${mp:,.0f}. Weak setup."
+                    })
+
     return plays
 
 
