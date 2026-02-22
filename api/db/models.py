@@ -152,6 +152,15 @@ def init_db():
             lt_breakdown TEXT,
             opt_breakdown TEXT,
 
+            -- Timing intelligence
+            horizon TEXT,
+            horizon_reason TEXT,
+            horizon_confidence REAL,
+            recommended_expiry TEXT,
+            recommended_dte INTEGER,
+            timing_signals TEXT,
+            timing_debug TEXT,
+
             FOREIGN KEY (scan_id) REFERENCES scans(id)
         );
 
@@ -224,7 +233,10 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
                 perf_1y, perf_3m, perf_1m, pct_from_52w_high, days_to_earnings,
                 sec_score, sentiment_score, sentiment_bull_pct, whale_score, pc_ratio,
                 insider_buys_30d, insider_sells_30d,
-                lt_breakdown, opt_breakdown
+                lt_breakdown, opt_breakdown,
+                horizon, horizon_reason, horizon_confidence,
+                recommended_expiry, recommended_dte,
+                timing_signals, timing_debug
             ) VALUES (
                 ?,?,?,?,
                 ?,?,
@@ -235,6 +247,9 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
                 ?,?,?,?,?,?,?,?,?,?,
                 ?,?,?,?,?,
                 ?,?,?,?,?,
+                ?,?,
+                ?,?,
+                ?,?,?,
                 ?,?,
                 ?,?
             )
@@ -257,6 +272,10 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
             r.get("whale_score", 0), r.get("pc_ratio"),
             r.get("insider_buys_30d", 0), r.get("insider_sells_30d", 0),
             lt_breakdown, opt_breakdown,
+            r.get("horizon"), r.get("horizon_reason"), r.get("horizon_confidence"),
+            r.get("recommended_expiry"), r.get("recommended_dte"),
+            json.dumps(r.get("timing_signals", [])),
+            json.dumps(r.get("timing_debug", {})),
         ))
 
         # Save price snapshot

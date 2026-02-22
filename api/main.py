@@ -29,6 +29,7 @@ from db.models import (
     get_all_scores_for_backtest, get_scan_count, get_db,
     save_score_weights, get_latest_weights,
 )
+from db.migrate_timing import run_migration as _run_timing_migration
 from backtest.engine import (
     run_full_backtest,
     backtest_score_vs_returns,
@@ -43,6 +44,11 @@ app = FastAPI(title="CyberScreener API", version="3.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 init_db()
+try:
+    _run_timing_migration()
+    print("✅ Timing migration complete")
+except Exception as _me:
+    print(f"Timing migration warning: {_me}")
 
 # Load saved weights if available
 def _load_saved_weights():
@@ -399,9 +405,7 @@ def scan_status():
 @app.get("/scores/latest")
 def get_latest_scores(limit: int = Query(50, ge=1, le=100)):
     conn = get_db()
-    scan = conn.execute("SELECT id, timestamp FROM scans WHERE intel_layers != 'base' ORDER BY id DESC LIMIT 1").fetchone()
-    if not scan:
-        scan = conn.execute("SELECT id, timestamp FROM scans ORDER BY id DESC LIMIT 1").fetchone()
+    scan = conn.execute("SELECT id, timestamp FROM scans ORDER BY id DESC LIMIT 1").fetchone()
     if not scan:
         conn.close()
         return {"message": "No scans found.", "results": []}
@@ -636,6 +640,126 @@ def get_plays_for_ticker(ticker: str):
         return {"ticker": ticker, "plays": [], "error": str(e)}
 
 
+
+# ─── Timing Debug Endpoints ───
+
+@app.get("/debug/timing/{ticker}")
+def debug_timing(ticker: str):
+    """
+    Test timing intelligence for a single ticker without running a full scan.
+    Shows horizon classification, expiry selection, and all inputs used.
+    """
+    import yfinance as yf
+    from core.timing import compute_timing_intelligence, get_earnings_date, classify_horizon
+    import math
+
+    def _safe(v, d=0.0):
+        if v is None: return d
+        try:
+            f = float(v)
+            return d if math.isnan(f) else f
+        except: return d
+
+    t = yf.Ticker(ticker.upper())
+    result = {"ticker": ticker.upper(), "steps": [], "timing": None, "error": None}
+
+    try:
+        # Step 1: basic data
+        info = t.fast_info
+        price = _safe(getattr(info, 'last_price', None), 0)
+        result["steps"].append(f"price=${price:.2f}")
+
+        # Step 2: earnings date
+        days_to_earnings = None
+        try:
+            ed_df = t.get_earnings_dates(limit=4)
+            import pandas as pd
+            if ed_df is not None and not ed_df.empty:
+                now = pd.Timestamp.now(tz=ed_df.index[0].tzinfo) if ed_df.index[0].tzinfo else pd.Timestamp.now()
+                future = ed_df[ed_df.index >= now]
+                if not future.empty:
+                    ed = future.index[0].date()
+                    from datetime import datetime
+                    days_to_earnings = (ed - datetime.today().date()).days
+        except Exception as e:
+            result["steps"].append(f"yfinance earnings date failed: {e}")
+
+        dte_final, earnings_source = get_earnings_date(ticker.upper(), days_to_earnings)
+        result["steps"].append(f"earnings_date: {dte_final}d out (source: {earnings_source})")
+
+        # Step 3: fetch options chains
+        fetched_chains = []
+        try:
+            dates = list(t.options) if t.options else []
+            for exp in dates[:3]:
+                try:
+                    chain = t.option_chain(exp)
+                    fetched_chains.append((exp, chain))
+                except Exception:
+                    continue
+            result["steps"].append(f"chains_fetched: {len(fetched_chains)} expiries")
+        except Exception as e:
+            result["steps"].append(f"options fetch failed: {e}")
+
+        # Step 4: build minimal data dict
+        data = {
+            "price": price,
+            "days_to_earnings": dte_final,
+            "lt_score": 55.0,   # placeholder — full scan needed for real value
+            "opt_score": 30.0,
+            "rsi": 50.0,
+            "iv_rank": None,
+            "whale_bias": "neutral",
+            "perf_3m": 0.0,
+            "iv_30d": None,
+        }
+
+        # Step 5: run timing
+        timing = compute_timing_intelligence(ticker.upper(), data, fetched_chains)
+        result["timing"] = timing
+        result["note"] = "lt_score/opt_score are placeholders (55/30) — run /scan for real values"
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
+@app.get("/debug/timing-full/{ticker}")
+def debug_timing_full(ticker: str):
+    """
+    Run a single-ticker full scan and return timing intelligence alongside all scores.
+    Slower (~10s) but shows real lt_score/opt_score feeding into timing.
+    """
+    from core.scanner import fetch_ticker_data, score_long_term, score_options
+    from core.timing import compute_timing_intelligence
+
+    data = fetch_ticker_data(ticker.upper())
+    if not data:
+        return {"error": f"Failed to fetch data for {ticker}"}
+
+    lt_score, _, lt_breakdown = score_long_term(data)
+    opt_score, _, opt_breakdown = score_options(data)
+    data["lt_score"] = lt_score
+    data["opt_score"] = opt_score
+
+    fetched_chains = data.pop("_fetched_chains", [])
+    data.pop("_ticker_obj", None)
+
+    timing = compute_timing_intelligence(ticker.upper(), data, fetched_chains)
+
+    return {
+        "ticker": ticker.upper(),
+        "lt_score": lt_score,
+        "opt_score": opt_score,
+        "whale_score": data.get("whale_score", 0),
+        "days_to_earnings": data.get("days_to_earnings"),
+        "iv_rank": data.get("iv_rank"),
+        "rsi": data.get("rsi"),
+        "perf_3m": data.get("perf_3m"),
+        "timing": timing,
+    }
+
 @app.get("/stats")
 def get_stats():
     conn = get_db()
@@ -662,85 +786,3 @@ def get_stats():
 
     conn.close()
     return stats
-
-@app.get("/debug/options/{ticker}")
-def debug_options(ticker: str):
-    """Test endpoint to isolate options chain fetch on Railway."""
-    import yfinance as yf
-    import time
-    result = {"ticker": ticker, "steps": []}
-    try:
-        t = yf.Ticker(ticker)
-        result["steps"].append("ticker_created")
-        dates = t.options
-        result["steps"].append(f"options_dates={list(dates)[:3] if dates else []}")
-        if dates:
-            chain = t.option_chain(dates[0])
-            result["steps"].append(f"chain_fetched_calls={len(chain.calls)}_puts={len(chain.puts)}")
-    except Exception as e:
-        result["error"] = str(e)
-    return result
-
-@app.get("/debug/chain/{ticker}")
-def debug_chain(ticker: str):
-    import yfinance as yf
-    t = yf.Ticker(ticker)
-    try:
-        dates = t.options
-        if not dates:
-            return {"error": "no options dates"}
-        chain = t.option_chain(dates[0])
-        calls = chain.calls[["strike","volume","openInterest","impliedVolatility","bid","ask"]].dropna()
-        # Top 5 by volume
-        top = calls.nlargest(5, "volume").to_dict("records")
-        total_vol = int(calls["volume"].sum())
-        max_vol = int(calls["volume"].max())
-        max_oi = int(calls["openInterest"].max())
-        return {
-            "expiry": dates[0],
-            "total_call_volume": total_vol,
-            "max_single_strike_volume": max_vol,
-            "max_open_interest": max_oi,
-            "top_5_by_volume": top
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/debug/whale/{ticker}")
-def debug_whale(ticker: str):
-    import yfinance as yf
-    import math
-    t = yf.Ticker(ticker)
-    try:
-        dates = list(t.options) if t.options else []
-        if not dates:
-            return {"error": "no options dates"}
-        chain = t.option_chain(dates[0])
-        calls = chain.calls
-        results = []
-        nan_count = 0
-        for _, row in calls.iterrows():
-            try:
-                vol_raw = row.get("volume", 0)
-                oi_raw = row.get("openInterest", 0)
-                if vol_raw is None or (isinstance(vol_raw, float) and math.isnan(vol_raw)):
-                    nan_count += 1
-                    continue
-                vol = int(vol_raw)
-                oi = int(oi_raw) if oi_raw and not (isinstance(oi_raw, float) and math.isnan(oi_raw)) else 0
-                ratio = vol / oi if oi > 0 else vol
-                if vol > 200:
-                    results.append({"strike": row.get("strike"), "vol": vol, "oi": oi, "ratio": round(ratio,1), "would_flag": vol > 500 and ratio > 3})
-            except Exception as e:
-                results.append({"error": str(e)})
-        flagged = [r for r in results if r.get("would_flag")]
-        return {
-            "expiry": dates[0],
-            "nan_rows_skipped": nan_count,
-            "rows_with_vol_over_200": len(results),
-            "would_flag_as_unusual": len(flagged),
-            "flagged": flagged[:5],
-            "top_volume": sorted(results, key=lambda x: x.get("vol",0), reverse=True)[:3]
-        }
-    except Exception as e:
-        return {"error": str(e)}

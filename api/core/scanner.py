@@ -25,6 +25,14 @@ import time
 import logging
 from datetime import datetime, timedelta
 
+try:
+    from core.timing import compute_timing_intelligence
+    TIMING_AVAILABLE = True
+except Exception as _timing_err:
+    TIMING_AVAILABLE = False
+    import logging as _lg
+    _lg.getLogger(__name__).warning(f"Timing module unavailable: {_timing_err}")
+
 logger = logging.getLogger(__name__)
 
 # Intel layers — imported with fallback so scanner still works if intel fails
@@ -195,10 +203,10 @@ def fetch_ticker_data(ticker):
             except Exception:
                 pass
 
-        # IV, IV Rank, and Whale Flow — single fetch, reused for all three
+        # IV, IV Rank, and Whale Flow — all from a single options chain fetch
         iv_30d = None
         iv_rank = None
-        fetched_chains = []
+        fetched_chains = []   # list of (expiry, chain) tuples reused by whale detector
         options_dates = []
         try:
             options_dates = list(t.options) if t.options else []
@@ -206,6 +214,7 @@ def fetch_ticker_data(ticker):
             pass
 
         if options_dates:
+            # Fetch up to 3 expiry chains — one network call each, results cached for whale
             for exp in options_dates[:3]:
                 try:
                     chain = t.option_chain(exp)
@@ -213,6 +222,7 @@ def fetch_ticker_data(ticker):
                 except Exception:
                     continue
 
+            # Compute IV from nearest chain
             if fetched_chains:
                 try:
                     _, nearest_chain = fetched_chains[0]
@@ -228,7 +238,8 @@ def fetch_ticker_data(ticker):
                 except Exception:
                     pass
 
-        # ── WHALE FLOW DETECTION — uses pre-fetched chains, zero extra calls ──
+        # ── WHALE FLOW DETECTION ──
+        # Pass pre-fetched chains — zero additional network calls
         whale_data = {"whale_score": 0, "whale_signals": [], "pc_ratio": None,
                       "unusual_calls": 0, "unusual_puts": 0, "whale_bias": "neutral",
                       "top_flow": []}
@@ -288,6 +299,7 @@ def fetch_ticker_data(ticker):
             "unusual_puts": whale_data.get("unusual_puts", 0),
             "top_flow": whale_data.get("top_flow", []),
             "_ticker_obj": t,  # Pass through for intel layers (not stored in DB)
+            "_fetched_chains": fetched_chains,  # Pass through for timing layer (not stored in DB)
         }
     except Exception as e:
         return None
@@ -298,11 +310,10 @@ def fetch_ticker_data(ticker):
 # ─────────────────────────────────────────────
 
 def detect_whale_flow_from_chains(fetched_chains, current_price):
-    """Detect unusual options activity from pre-fetched chain data."""
-    import math
-    def _si(v): return 0 if v is None or (isinstance(v, float) and math.isnan(v)) else int(v)
-    def _sf(v): return 0.0 if v is None or (isinstance(v, float) and math.isnan(v)) else float(v)
-
+    """
+    Detect unusual options activity from pre-fetched chain data.
+    Takes list of (expiry, chain) tuples — zero additional network calls.
+    """
     signals = []
     unusual_calls = 0
     unusual_puts = 0
@@ -315,31 +326,26 @@ def detect_whale_flow_from_chains(fetched_chains, current_price):
             if df.empty:
                 continue
             for _, row in df.iterrows():
-                try:
-                    strike = _sf(row.get("strike", 0))
-                    vol = _si(row.get("volume", 0))
-                    oi = _si(row.get("openInterest", 0))
-                    iv = _sf(row.get("impliedVolatility", 0))
-                    bid = _sf(row.get("bid", 0))
-                    ask = _sf(row.get("ask", 0))
-                    itm = bool(row.get("inTheMoney", False))
-                except Exception:
-                    continue
-
-                mid_price = (bid + ask) / 2 if ask > 0 else _sf(row.get("lastPrice", 0))
+                strike = row.get("strike", 0)
+                vol = int(row.get("volume", 0) or 0)
+                oi = int(row.get("openInterest", 0) or 0)
+                iv = float(row.get("impliedVolatility", 0) or 0)
+                bid = float(row.get("bid", 0) or 0)
+                ask = float(row.get("ask", 0) or 0)
+                itm = row.get("inTheMoney", False)
+                mid_price = (bid + ask) / 2 if ask > 0 else float(row.get("lastPrice", 0) or 0)
                 premium_total = vol * mid_price * 100
                 if side == "call":
                     total_call_volume += vol
                 else:
                     total_put_volume += vol
-
                 vol_oi_ratio = vol / oi if oi > 0 else (vol if vol > 0 else 0)
                 is_unusual = False
                 if vol > 500 and vol_oi_ratio > 3:
                     is_unusual = True
                     if side == "call": unusual_calls += 1
                     else: unusual_puts += 1
-                otm_distance = abs(strike - current_price) / current_price * 100 if current_price > 0 else 0
+                otm_distance = abs(strike - current_price) / current_price * 100
                 if not itm and vol > 1000 and otm_distance > 5 and premium_total > 50000:
                     is_unusual = True
                     if side == "call": unusual_calls += 1
@@ -371,8 +377,8 @@ def detect_whale_flow_from_chains(fetched_chains, current_price):
     if unusual_puts > 0:
         signals.append(f"🐋 {unusual_puts} unusual put{'s' if unusual_puts > 1 else ''} detected")
     if top_flow:
-        b = top_flow[0]
-        signals.append(f"💰 Largest flow: ${b['premium_total']:,.0f} in ${b['strike']:.0f} {b['type']}s ({b['expiry']})")
+        biggest = top_flow[0]
+        signals.append(f"💰 Largest flow: ${biggest['premium_total']:,.0f} in ${biggest['strike']:.0f} {biggest['type']}s ({biggest['expiry']})")
     if pc_ratio is not None:
         if pc_ratio > 1.5: signals.append(f"📊 High P/C ratio ({pc_ratio:.2f}) — heavy put activity")
         elif pc_ratio < 0.5: signals.append(f"📊 Low P/C ratio ({pc_ratio:.2f}) — heavy call activity")
@@ -436,19 +442,13 @@ def detect_whale_flow(ticker_obj, current_price, expiry_dates):
                 continue
 
             for _, row in df.iterrows():
-                try:
-                    import math
-                    def _safe_int(v): return 0 if v is None or (isinstance(v, float) and math.isnan(v)) else int(v)
-                    def _safe_float(v): return 0.0 if v is None or (isinstance(v, float) and math.isnan(v)) else float(v)
-                    strike = _safe_float(row.get("strike", 0))
-                    vol = _safe_int(row.get("volume", 0))
-                    oi = _safe_int(row.get("openInterest", 0))
-                    iv = _safe_float(row.get("impliedVolatility", 0))
-                    bid = _safe_float(row.get("bid", 0))
-                    ask = _safe_float(row.get("ask", 0))
-                    itm = bool(row.get("inTheMoney", False))
-                except Exception:
-                    continue
+                strike = row.get("strike", 0)
+                vol = int(row.get("volume", 0) or 0)
+                oi = int(row.get("openInterest", 0) or 0)
+                iv = float(row.get("impliedVolatility", 0) or 0)
+                bid = float(row.get("bid", 0) or 0)
+                ask = float(row.get("ask", 0) or 0)
+                itm = row.get("inTheMoney", False)
 
                 mid_price = (bid + ask) / 2 if ask > 0 else float(row.get("lastPrice", 0) or 0)
                 premium_total = vol * mid_price * 100  # Total $ flowing
@@ -1458,6 +1458,23 @@ def run_scan(tickers=None, enable_sec=True, enable_sentiment=True, callback=None
             else:
                 data["sentiment_score"] = 0
                 data["sentiment"] = None
+
+            # ── Intel Layer: Timing Intelligence ──
+            fetched_chains_for_timing = data.pop("_fetched_chains", [])
+            if TIMING_AVAILABLE:
+                try:
+                    timing = compute_timing_intelligence(ticker, data, fetched_chains_for_timing)
+                    data["horizon"] = timing.get("horizon")
+                    data["horizon_reason"] = timing.get("horizon_reason")
+                    data["horizon_confidence"] = timing.get("horizon_confidence")
+                    data["recommended_expiry"] = timing.get("recommended_expiry")
+                    data["recommended_dte"] = timing.get("recommended_dte")
+                    data["timing_signals"] = timing.get("timing_signals", [])
+                    data["timing_debug"] = timing.get("timing_debug", {})
+                except Exception as e:
+                    logger.warning(f"Timing intel failed for {ticker}: {e}")
+                    data["horizon"] = None
+                    data["timing_signals"] = []
 
             # Whale flow is already in data from fetch_ticker_data
             # Combine all intel signals into opt_reasons for dashboard
