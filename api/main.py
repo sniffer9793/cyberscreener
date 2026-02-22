@@ -705,3 +705,42 @@ def debug_chain(ticker: str):
         }
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/debug/whale/{ticker}")
+def debug_whale(ticker: str):
+    import yfinance as yf
+    import math
+    t = yf.Ticker(ticker)
+    try:
+        dates = list(t.options) if t.options else []
+        if not dates:
+            return {"error": "no options dates"}
+        chain = t.option_chain(dates[0])
+        calls = chain.calls
+        results = []
+        nan_count = 0
+        for _, row in calls.iterrows():
+            try:
+                vol_raw = row.get("volume", 0)
+                oi_raw = row.get("openInterest", 0)
+                if vol_raw is None or (isinstance(vol_raw, float) and math.isnan(vol_raw)):
+                    nan_count += 1
+                    continue
+                vol = int(vol_raw)
+                oi = int(oi_raw) if oi_raw and not (isinstance(oi_raw, float) and math.isnan(oi_raw)) else 0
+                ratio = vol / oi if oi > 0 else vol
+                if vol > 200:
+                    results.append({"strike": row.get("strike"), "vol": vol, "oi": oi, "ratio": round(ratio,1), "would_flag": vol > 500 and ratio > 3})
+            except Exception as e:
+                results.append({"error": str(e)})
+        flagged = [r for r in results if r.get("would_flag")]
+        return {
+            "expiry": dates[0],
+            "nan_rows_skipped": nan_count,
+            "rows_with_vol_over_200": len(results),
+            "would_flag_as_unusual": len(flagged),
+            "flagged": flagged[:5],
+            "top_volume": sorted(results, key=lambda x: x.get("vol",0), reverse=True)[:3]
+        }
+    except Exception as e:
+        return {"error": str(e)}
