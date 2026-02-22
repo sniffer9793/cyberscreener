@@ -19,10 +19,15 @@ import hashlib
 import json
 
 from core.scanner import (
-    run_scan, ALL_TICKERS, CYBER_UNIVERSE,
+    run_scan, ALL_TICKERS,
     fetch_options_chain, generate_plays, fetch_ticker_data,
     score_long_term, score_options, get_weights, set_weights,
     DEFAULT_LT_WEIGHTS, DEFAULT_OPT_WEIGHTS,
+)
+from core.universe import (
+    CYBER_UNIVERSE, ENERGY_UNIVERSE, DEFENSE_UNIVERSE,
+    get_universe_by_sector, get_sector_summary, get_all_tickers,
+    ALL_CYBER_TICKERS, ALL_ENERGY_TICKERS, ALL_DEFENSE_TICKERS,
 )
 from db.models import (
     init_db, save_scan, get_score_history,
@@ -30,6 +35,8 @@ from db.models import (
     save_score_weights, get_latest_weights,
 )
 from db.migrate_timing import run_migration as _run_timing_migration
+from db.migrate_sectors import run_migration as _run_sectors_migration
+from intel.earnings_calendar import seed_from_payload, save_earnings_date, get_all_upcoming_dates
 from backtest.engine import (
     run_full_backtest,
     backtest_score_vs_returns,
@@ -49,6 +56,11 @@ try:
     print("✅ Timing migration complete")
 except Exception as _me:
     print(f"Timing migration warning: {_me}")
+try:
+    _run_sectors_migration()
+    print("✅ Sectors migration complete")
+except Exception as _me:
+    print(f"Sectors migration warning: {_me}")
 
 # Load saved weights if available
 def _load_saved_weights():
@@ -759,6 +771,66 @@ def debug_timing_full(ticker: str):
         "perf_3m": data.get("perf_3m"),
         "timing": timing,
     }
+
+# ─── Universe Endpoints ───
+
+@app.get("/universe")
+def get_full_universe():
+    return {
+        "sectors": get_universe_by_sector(),
+        "summary": get_sector_summary(),
+        "tickers": {
+            "cyber": ALL_CYBER_TICKERS,
+            "energy": ALL_ENERGY_TICKERS,
+            "defense": ALL_DEFENSE_TICKERS,
+            "all": ALL_TICKERS,
+        }
+    }
+
+@app.get("/tickers/{sector}")
+def get_tickers_by_sector(sector: str):
+    valid = ["cyber", "energy", "defense"]
+    if sector not in valid:
+        raise HTTPException(status_code=400, detail=f"Sector must be one of {valid}")
+    tickers = get_all_tickers([sector])
+    return {"sector": sector, "tickers": tickers, "total": len(tickers)}
+
+
+# ─── Earnings Calendar Endpoints ───
+
+class EarningsSeedRequest(BaseModel):
+    dates: dict
+    password: str
+
+class EarningsSetRequest(BaseModel):
+    ticker: str
+    date: str
+    report_time: Optional[str] = "unknown"
+    password: str
+
+@app.post("/earnings/seed")
+def earnings_seed(req: EarningsSeedRequest):
+    if req.password != API_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid password")
+    return seed_from_payload(req.dates)
+
+@app.post("/earnings/set")
+def earnings_set(req: EarningsSetRequest):
+    if req.password != API_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid password")
+    try:
+        d = datetime.strptime(req.date[:10], "%Y-%m-%d").date()
+        ok = save_earnings_date(req.ticker.upper(), d, source="manual_override", report_time=req.report_time)
+        if ok:
+            return {"status": "saved", "ticker": req.ticker.upper(), "date": req.date}
+        raise HTTPException(status_code=500, detail="Failed to save")
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid date: {req.date}")
+
+@app.get("/earnings/upcoming")
+def earnings_upcoming():
+    return {"dates": get_all_upcoming_dates()}
+
 
 @app.get("/stats")
 def get_stats():
