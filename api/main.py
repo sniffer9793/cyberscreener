@@ -399,7 +399,9 @@ def scan_status():
 @app.get("/scores/latest")
 def get_latest_scores(limit: int = Query(50, ge=1, le=100)):
     conn = get_db()
-    scan = conn.execute("SELECT id, timestamp FROM scans ORDER BY id DESC LIMIT 1").fetchone()
+    scan = conn.execute("SELECT id, timestamp FROM scans WHERE intel_layers != 'base' ORDER BY id DESC LIMIT 1").fetchone()
+    if not scan:
+        scan = conn.execute("SELECT id, timestamp FROM scans ORDER BY id DESC LIMIT 1").fetchone()
     if not scan:
         conn.close()
         return {"message": "No scans found.", "results": []}
