@@ -321,26 +321,19 @@ def detect_whale_flow_from_chains(fetched_chains, current_price):
     total_put_volume = 0
     top_flow = []
 
-    import math as _math
-    def _si(v): return 0 if v is None or (isinstance(v, float) and _math.isnan(v)) else int(float(v))
-    def _sf(v): return 0.0 if v is None or (isinstance(v, float) and _math.isnan(v)) else float(v)
-
     for exp, chain in fetched_chains:
         for side, df in [("call", chain.calls), ("put", chain.puts)]:
             if df.empty:
                 continue
             for _, row in df.iterrows():
-                try:
-                    strike = _sf(row.get("strike", 0))
-                    vol = _si(row.get("volume", 0))
-                    oi = _si(row.get("openInterest", 0))
-                    iv = _sf(row.get("impliedVolatility", 0))
-                    bid = _sf(row.get("bid", 0))
-                    ask = _sf(row.get("ask", 0))
-                    itm = bool(row.get("inTheMoney", False))
-                    mid_price = (bid + ask) / 2 if ask > 0 else _sf(row.get("lastPrice", 0))
-                except Exception:
-                    continue
+                strike = row.get("strike", 0)
+                vol = int(row.get("volume", 0) or 0)
+                oi = int(row.get("openInterest", 0) or 0)
+                iv = float(row.get("impliedVolatility", 0) or 0)
+                bid = float(row.get("bid", 0) or 0)
+                ask = float(row.get("ask", 0) or 0)
+                itm = row.get("inTheMoney", False)
+                mid_price = (bid + ask) / 2 if ask > 0 else float(row.get("lastPrice", 0) or 0)
                 premium_total = vol * mid_price * 100
                 if side == "call":
                     total_call_volume += vol
