@@ -680,3 +680,28 @@ def debug_options(ticker: str):
     except Exception as e:
         result["error"] = str(e)
     return result
+
+@app.get("/debug/chain/{ticker}")
+def debug_chain(ticker: str):
+    import yfinance as yf
+    t = yf.Ticker(ticker)
+    try:
+        dates = t.options
+        if not dates:
+            return {"error": "no options dates"}
+        chain = t.option_chain(dates[0])
+        calls = chain.calls[["strike","volume","openInterest","impliedVolatility","bid","ask"]].dropna()
+        # Top 5 by volume
+        top = calls.nlargest(5, "volume").to_dict("records")
+        total_vol = int(calls["volume"].sum())
+        max_vol = int(calls["volume"].max())
+        max_oi = int(calls["openInterest"].max())
+        return {
+            "expiry": dates[0],
+            "total_call_volume": total_vol,
+            "max_single_strike_volume": max_vol,
+            "max_open_interest": max_oi,
+            "top_5_by_volume": top
+        }
+    except Exception as e:
+        return {"error": str(e)}
