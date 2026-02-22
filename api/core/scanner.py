@@ -297,6 +297,112 @@ def fetch_ticker_data(ticker):
 # WHALE FLOW DETECTION
 # ─────────────────────────────────────────────
 
+def detect_whale_flow_from_chains(fetched_chains, current_price):
+    """Detect unusual options activity from pre-fetched chain data."""
+    import math
+    def _si(v): return 0 if v is None or (isinstance(v, float) and math.isnan(v)) else int(v)
+    def _sf(v): return 0.0 if v is None or (isinstance(v, float) and math.isnan(v)) else float(v)
+
+    signals = []
+    unusual_calls = 0
+    unusual_puts = 0
+    total_call_volume = 0
+    total_put_volume = 0
+    top_flow = []
+
+    for exp, chain in fetched_chains:
+        for side, df in [("call", chain.calls), ("put", chain.puts)]:
+            if df.empty:
+                continue
+            for _, row in df.iterrows():
+                try:
+                    strike = _sf(row.get("strike", 0))
+                    vol = _si(row.get("volume", 0))
+                    oi = _si(row.get("openInterest", 0))
+                    iv = _sf(row.get("impliedVolatility", 0))
+                    bid = _sf(row.get("bid", 0))
+                    ask = _sf(row.get("ask", 0))
+                    itm = bool(row.get("inTheMoney", False))
+                except Exception:
+                    continue
+
+                mid_price = (bid + ask) / 2 if ask > 0 else _sf(row.get("lastPrice", 0))
+                premium_total = vol * mid_price * 100
+                if side == "call":
+                    total_call_volume += vol
+                else:
+                    total_put_volume += vol
+
+                vol_oi_ratio = vol / oi if oi > 0 else (vol if vol > 0 else 0)
+                is_unusual = False
+                if vol > 500 and vol_oi_ratio > 3:
+                    is_unusual = True
+                    if side == "call": unusual_calls += 1
+                    else: unusual_puts += 1
+                otm_distance = abs(strike - current_price) / current_price * 100 if current_price > 0 else 0
+                if not itm and vol > 1000 and otm_distance > 5 and premium_total > 50000:
+                    is_unusual = True
+                    if side == "call": unusual_calls += 1
+                    else: unusual_puts += 1
+                if premium_total > 200000 and vol > 200:
+                    is_unusual = True
+                if is_unusual and premium_total > 10000:
+                    top_flow.append({
+                        "type": side, "strike": strike, "expiry": exp,
+                        "volume": vol, "open_interest": oi,
+                        "vol_oi_ratio": round(vol_oi_ratio, 1),
+                        "premium_total": round(premium_total, 0),
+                        "iv": round(iv * 100, 1),
+                        "otm_pct": round(otm_distance, 1), "itm": itm,
+                    })
+
+    top_flow.sort(key=lambda x: x["premium_total"], reverse=True)
+    top_flow = top_flow[:5]
+    pc_ratio = round(total_put_volume / total_call_volume, 2) if total_call_volume > 0 else None
+    total_unusual = unusual_calls + unusual_puts
+
+    if unusual_calls > unusual_puts + 2: whale_bias = "bullish"
+    elif unusual_puts > unusual_calls + 2: whale_bias = "bearish"
+    elif total_unusual > 0: whale_bias = "active"
+    else: whale_bias = "neutral"
+
+    if unusual_calls > 0:
+        signals.append(f"🐋 {unusual_calls} unusual call{'s' if unusual_calls > 1 else ''} detected")
+    if unusual_puts > 0:
+        signals.append(f"🐋 {unusual_puts} unusual put{'s' if unusual_puts > 1 else ''} detected")
+    if top_flow:
+        b = top_flow[0]
+        signals.append(f"💰 Largest flow: ${b['premium_total']:,.0f} in ${b['strike']:.0f} {b['type']}s ({b['expiry']})")
+    if pc_ratio is not None:
+        if pc_ratio > 1.5: signals.append(f"📊 High P/C ratio ({pc_ratio:.2f}) — heavy put activity")
+        elif pc_ratio < 0.5: signals.append(f"📊 Low P/C ratio ({pc_ratio:.2f}) — heavy call activity")
+
+    whale_score = 0
+    if total_unusual >= 8: whale_score += 40
+    elif total_unusual >= 5: whale_score += 30
+    elif total_unusual >= 3: whale_score += 20
+    elif total_unusual >= 1: whale_score += 10
+    if top_flow:
+        mp = top_flow[0]["premium_total"]
+        if mp > 1000000: whale_score += 30
+        elif mp > 500000: whale_score += 20
+        elif mp > 100000: whale_score += 15
+        elif mp > 50000: whale_score += 8
+    if total_unusual > 0:
+        if unusual_calls > 0 and unusual_puts == 0: whale_score += 20
+        elif unusual_puts > 0 and unusual_calls == 0: whale_score += 20
+        elif abs(unusual_calls - unusual_puts) > 3: whale_score += 10
+    if pc_ratio is not None:
+        if pc_ratio > 2.0 or pc_ratio < 0.3: whale_score += 10
+        elif pc_ratio > 1.5 or pc_ratio < 0.5: whale_score += 5
+
+    return {
+        "whale_score": min(100, whale_score), "whale_signals": signals,
+        "whale_bias": whale_bias, "pc_ratio": pc_ratio,
+        "unusual_calls": unusual_calls, "unusual_puts": unusual_puts, "top_flow": top_flow,
+    }
+
+
 def detect_whale_flow(ticker_obj, current_price, expiry_dates):
     """
     Detect unusual options activity (whale flow) from existing chain data.
