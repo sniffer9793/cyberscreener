@@ -93,6 +93,99 @@ function SvgGroupedBarChart({data,bars,labelKey,height=220}){
     React.createElement("div",{style:{display:"flex",justifyContent:"space-around",marginTop:4}},data.map((d,i)=>React.createElement("div",{key:i,style:{fontSize:8,color:C.textSec,textAlign:"center",flex:1,fontFamily:mono}},d[labelKey]||""))),
     React.createElement("div",{style:{display:"flex",gap:12,marginTop:4}},bars.map(b=>React.createElement("span",{key:b.key,style:{fontSize:10,color:b.color,fontWeight:600}},"● "+b.name))));}
 
+// ─── Signal Price Chart ───
+function SvgPriceChart({ticker,days=90}){
+  const [data,setData]=useState(null),[tip,setTip]=useState(null),[showSMA,setShowSMA]=useState({s20:true,s50:true,s200:false}),[selDays,setSelDays]=useState(days);
+  useEffect(()=>{if(!ticker)return;setData(null);api('/chart/'+ticker+'?days='+selDays).then(d=>setData(d))},[ticker,selDays]);
+  if(!data)return React.createElement("div",{style:{height:340,display:"flex",alignItems:"center",justifyContent:"center",color:C.textSec,fontSize:12,background:C.bg,borderRadius:12}},"Loading chart...");
+  const prices=data.prices||[];
+  if(!prices.length)return React.createElement("div",{style:{height:80,display:"flex",alignItems:"center",justifyContent:"center",color:C.textSec,fontSize:12,background:C.bg,borderRadius:12}},"No price data — run backfill or wait for next scan");
+  const n=prices.length,sigs=data.signals||[];
+  // ViewBox 0 0 100 115: price area PT→PB, divider, RSI RT→RB, labels below
+  const PT=2,PB=72,RT=78,RB=100;
+  const px=i=>(i/(n-1||1))*100;
+  const closes=prices.map(p=>p.close||0);
+  const validPrices=[...closes,...prices.map(p=>p.sma20).filter(v=>v!=null),...prices.map(p=>p.sma50).filter(v=>v!=null),...prices.map(p=>p.sma200).filter(v=>v!=null)];
+  const pMin=Math.min(...validPrices)*0.997,pMax=Math.max(...validPrices)*1.003,pR=pMax-pMin||1;
+  const py=v=>PB-((v-pMin)/pR)*(PB-PT);
+  const pyR=r=>RB-(r/100)*(RB-RT);
+  const makePts=getV=>{let d="";prices.forEach((p,i)=>{const v=getV(p);if(v!=null)d+=(d?" ":"")+px(i)+","+py(v)});return d};
+  const rsiPts=prices.map((p,i)=>p.rsi!=null?{x:px(i),y:pyR(p.rsi)}:null).filter(Boolean);
+  const rsiLine=rsiPts.map(p=>p.x+","+p.y).join(" ");
+  const rsiFill=rsiPts.length>1?rsiLine+" "+rsiPts[rsiPts.length-1].x+","+RB+" "+rsiPts[0].x+","+RB:"";
+  const priceLine=prices.map((p,i)=>px(i)+","+py(p.close||0)).join(" ");
+  const priceFill=priceLine+" "+px(n-1)+","+PB+" 0,"+PB;
+  const SC={earnings:C.amber,insider_buy:C.green,insider_sell:C.red,rsi_oversold:C.green,rsi_overbought:C.red,sma_cross_bull:"#30d158",sma_cross_bear:C.red};
+  const SI={earnings:"E",insider_buy:"B",insider_sell:"S",rsi_oversold:"◎",rsi_overbought:"◎",sma_cross_bull:"▲",sma_cross_bear:"▼"};
+  const d2i={};prices.forEach((p,i)=>{d2i[p.date]=i});
+  const mappedSigs=sigs.map(s=>{let idx=d2i[s.date];if(idx==null){let best=0,bd=Infinity;prices.forEach((p,i)=>{const dd=Math.abs(new Date(p.date)-new Date(s.date));if(dd<bd){bd=dd;best=i}});idx=best}return{...s,idx,x:px(idx),color:SC[s.type]||C.blue,icon:SI[s.type]||"•"}});
+  const fmtD=d=>d?d.slice(5):"";
+  return React.createElement("div",{style:{position:"relative",width:"100%"}},
+    tip&&React.createElement("div",{className:"svgtip",style:{left:tip.x,top:Math.max(0,tip.y-40)}},tip.text),
+    React.createElement("div",{style:{display:"flex",gap:6,marginBottom:8}},
+      [30,60,90,180].map(d=>React.createElement("button",{key:d,onClick:()=>setSelDays(d),style:{padding:"4px 10px",borderRadius:6,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:mono,background:selDays===d?C.blueBg:C.bgCard,border:"1px solid "+(selDays===d?C.blue+"40":C.border),color:selDays===d?C.blue:C.textSec}},d+"d"))),
+    React.createElement("svg",{width:"100%",height:340,viewBox:"0 0 100 115",preserveAspectRatio:"none",style:{overflow:"visible",display:"block"}},
+      // Grid lines — price area
+      [.25,.5,.75,1].map(f=>React.createElement("line",{key:"pg"+f,x1:0,y1:PT+(PB-PT)*f,x2:100,y2:PT+(PB-PT)*f,stroke:C.border,strokeWidth:.2})),
+      // RSI reference lines
+      React.createElement("line",{x1:0,y1:pyR(70),x2:100,y2:pyR(70),stroke:C.red+"50",strokeWidth:.25,strokeDasharray:"1.5,1"}),
+      React.createElement("line",{x1:0,y1:pyR(30),x2:100,y2:pyR(30),stroke:C.green+"50",strokeWidth:.25,strokeDasharray:"1.5,1"}),
+      React.createElement("line",{x1:0,y1:pyR(50),x2:100,y2:pyR(50),stroke:C.border,strokeWidth:.15}),
+      // Signal vertical dashed lines
+      ...mappedSigs.map((s,i)=>React.createElement("line",{key:"svl"+i,x1:s.x,y1:PT,x2:s.x,y2:RB,stroke:s.color,strokeWidth:.35,strokeDasharray:"1.2,1.2",opacity:.6})),
+      // Price fill area
+      React.createElement("polygon",{points:priceFill,fill:C.blue,opacity:.06}),
+      // SMA lines
+      showSMA.s200&&React.createElement("polyline",{points:makePts(p=>p.sma200),fill:"none",stroke:C.purple,strokeWidth:.45,opacity:.75}),
+      showSMA.s50&&React.createElement("polyline",{points:makePts(p=>p.sma50),fill:"none",stroke:C.amber,strokeWidth:.45,opacity:.8}),
+      showSMA.s20&&React.createElement("polyline",{points:makePts(p=>p.sma20),fill:"none",stroke:"#30d158",strokeWidth:.45,opacity:.8}),
+      // Price line
+      React.createElement("polyline",{points:priceLine,fill:"none",stroke:C.blue,strokeWidth:.65}),
+      // Divider
+      React.createElement("line",{x1:0,y1:RT-2,x2:100,y2:RT-2,stroke:C.border,strokeWidth:.3}),
+      // RSI fill + line
+      rsiFill&&React.createElement("polygon",{points:rsiFill,fill:C.amber,opacity:.1}),
+      rsiLine&&React.createElement("polyline",{points:rsiLine,fill:"none",stroke:C.amber,strokeWidth:.55}),
+      // RSI labels
+      React.createElement("text",{x:1,y:RT+.5,fill:C.textSec,fontSize:2.2,dominantBaseline:"hanging"},"RSI"),
+      React.createElement("text",{x:99,y:pyR(70),fill:C.red,fontSize:2,textAnchor:"end",dominantBaseline:"middle"},"70"),
+      React.createElement("text",{x:99,y:pyR(30),fill:C.green,fontSize:2,textAnchor:"end",dominantBaseline:"middle"},"30"),
+      // RSI extreme circles
+      ...mappedSigs.filter(s=>s.type==="rsi_oversold"||s.type==="rsi_overbought").map((s,i)=>React.createElement("circle",{key:"sc"+i,cx:s.x,cy:pyR(s.type==="rsi_oversold"?28:72),r:1.1,fill:s.color,opacity:.9})),
+      // Signal icon tags at bottom of price area
+      ...mappedSigs.filter(s=>s.type!=="rsi_oversold"&&s.type!=="rsi_overbought").map((s,i)=>React.createElement("text",{key:"st"+i,x:s.x,y:PB-1,fill:s.color,fontSize:2.4,textAnchor:"middle",fontFamily:mono,fontWeight:"bold"},s.icon)),
+      // Y-axis price labels
+      React.createElement("text",{x:1,y:PB,fill:C.textSec,fontSize:2},"$"+pMin.toFixed(0)),
+      React.createElement("text",{x:1,y:PT+2.5,fill:C.textSec,fontSize:2},"$"+pMax.toFixed(0)),
+      // X-axis date labels
+      React.createElement("text",{x:1,y:104,fill:C.textSec,fontSize:2.2},fmtD(prices[0]?.date)),
+      n>2&&React.createElement("text",{x:50,y:104,fill:C.textSec,fontSize:2.2,textAnchor:"middle"},fmtD(prices[Math.floor(n/2)]?.date)),
+      React.createElement("text",{x:99,y:104,fill:C.textSec,fontSize:2.2,textAnchor:"end"},fmtD(prices[n-1]?.date)),
+      // Hover strips
+      ...prices.map((p,i)=>React.createElement("rect",{key:"hs"+i,x:px(i)-.6,y:0,width:1.2,height:100,fill:"transparent",
+        onMouseEnter:e=>{const r=e.target.getBoundingClientRect(),pr=e.target.closest("div").getBoundingClientRect();
+          const parts=[p.date,"$"+(p.close||0).toFixed(2)];
+          if(p.rsi!=null)parts.push("RSI "+p.rsi);
+          if(showSMA.s20&&p.sma20)parts.push("SMA20 $"+p.sma20.toFixed(0));
+          if(showSMA.s50&&p.sma50)parts.push("SMA50 $"+p.sma50.toFixed(0));
+          setTip({x:r.left-pr.left,y:r.top-pr.top,text:parts.join("  ")})},
+        onMouseLeave:()=>setTip(null)}))
+    ),
+    // Legend
+    React.createElement("div",{style:{display:"flex",gap:10,marginTop:6,flexWrap:"wrap",alignItems:"center"}},
+      React.createElement("span",{style:{fontSize:10,color:C.blue,fontWeight:600}},"● Price"),
+      React.createElement("span",{style:{fontSize:10,color:"#30d158",fontWeight:showSMA.s20?700:400,cursor:"pointer",opacity:showSMA.s20?1:.45},onClick:()=>setShowSMA(s=>({...s,s20:!s.s20}))},"● SMA20"),
+      React.createElement("span",{style:{fontSize:10,color:C.amber,fontWeight:showSMA.s50?700:400,cursor:"pointer",opacity:showSMA.s50?1:.45},onClick:()=>setShowSMA(s=>({...s,s50:!s.s50}))},"● SMA50"),
+      React.createElement("span",{style:{fontSize:10,color:C.purple,fontWeight:showSMA.s200?700:400,cursor:"pointer",opacity:showSMA.s200?1:.45},onClick:()=>setShowSMA(s=>({...s,s200:!s.s200}))},"● SMA200"),
+      React.createElement("span",{style:{fontSize:10,color:C.amber,fontWeight:600}},"┄ RSI"),
+      React.createElement("span",{style:{flex:1}}),
+      React.createElement("span",{style:{fontSize:9,color:C.amber,fontFamily:mono}},"E Earnings "),
+      React.createElement("span",{style:{fontSize:9,color:C.green,fontFamily:mono}},"B Buy "),
+      React.createElement("span",{style:{fontSize:9,color:C.red,fontFamily:mono}},"S Sell "),
+      React.createElement("span",{style:{fontSize:9,color:"#30d158",fontFamily:mono}},"▲ Bull "),
+      React.createElement("span",{style:{fontSize:9,color:C.red,fontFamily:mono}},"▼ Bear "),
+      React.createElement("span",{style:{fontSize:9,color:C.green,fontFamily:mono}},"◎ OS/OB")));}
+
 // ─── Shared UI ───
 function Badge({children,color=C.green,variant}){const s=variant==="pill"?{display:"inline-flex",padding:"3px 10px",borderRadius:12,fontSize:11,fontWeight:600,background:color+"12",color}:{display:"inline-block",padding:"2px 8px",borderRadius:6,fontSize:11,fontWeight:600,background:color+"12",color};return React.createElement("span",{style:s},children)}
 function Card({children,style,...p}){return React.createElement("div",{style:{background:C.bgCard,borderRadius:14,border:"1px solid "+C.border,boxShadow:C.shadow,...style},...p},children)}
@@ -153,7 +246,7 @@ function ScoresTab({latest}){
         lr&&React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},React.createElement(LayerPill,{name:"SEC",icon:"📋",score:lr.sec_score}),React.createElement(LayerPill,{name:"Sent",icon:"💬",score:lr.sentiment_score}),React.createElement(LayerPill,{name:"Whale",icon:"🐋",score:lr.whale_score})),
         lr&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},React.createElement(BreakdownPanel,{items:ltBreakdown(lr),title:"LT Score Breakdown",accent:C.green}),React.createElement(BreakdownPanel,{items:optBreakdown(lr),title:"Opt Score Breakdown",accent:C.blue})),
         React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:4}},sel+" — Score History"),React.createElement(SvgAreaChart,{data:cd,lines:[{key:"lt_score",name:"LT Score",color:C.green},{key:"opt_score",name:"Opt Score",color:C.blue}],height:260})),
-        React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:4}},"Price & RSI"),React.createElement(SvgDualLineChart,{data:cd,line1:{key:"price",name:"Price",color:C.blue},line2:{key:"rsi",name:"RSI",color:C.amber},height:200})))));}
+        React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:12}},sel+" — Price & Signals"),React.createElement(SvgPriceChart,{ticker:sel}))));}
 
 // ─── Plays Tab ───
 function PlaysTab({latest}){
