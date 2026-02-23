@@ -39,6 +39,7 @@ from db.models import (
 )
 from db.migrate_timing import run_migration as _run_timing_migration
 from db.migrate_sectors import run_migration as _run_sectors_migration
+from db.migrate_threat import run_migration as _run_threat_migration
 from intel.earnings_calendar import seed_from_payload, save_earnings_date, get_all_upcoming_dates
 from backtest.engine import (
     run_full_backtest,
@@ -64,6 +65,10 @@ try:
     print("✅ Sectors migration complete")
 except Exception as _me:
     print(f"Sectors migration warning: {_me}")
+try:
+    _run_threat_migration()
+except Exception as _me:
+    print(f"Threat migration warning: {_me}")
 
 # Load saved weights if available
 def _load_saved_weights():

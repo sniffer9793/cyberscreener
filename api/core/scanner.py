@@ -1509,6 +1509,17 @@ def run_scan(tickers=None, enable_sec=True, enable_sentiment=True, callback=None
     if tickers is None:
         tickers = ALL_TICKERS
 
+    # ── Pre-fetch threat intel caches once for the whole scan ─────────────────
+    _NEWS_INTEL_AVAILABLE = False
+    try:
+        from intel.news_intel import warm_caches as _warm_threat_caches
+        from intel.news_intel import score_ticker_threat_context as _score_threat
+        _warm_threat_caches(all_tickers=set(tickers))
+        _NEWS_INTEL_AVAILABLE = True
+        logger.info("✅ Threat intel caches warmed")
+    except Exception as _nie:
+        logger.warning(f"⚠️ News intel unavailable: {_nie}")
+
     results = []
     for i, ticker in enumerate(tickers):
         if callback:
@@ -1602,6 +1613,36 @@ def run_scan(tickers=None, enable_sec=True, enable_sentiment=True, callback=None
             if all_intel_signals:
                 data["opt_reasons"] = opt_reasons + all_intel_signals
                 data["lt_reasons"] = lt_reasons + [s for s in sec_sigs if "insider" in s.lower() or "analyst" in s.lower()]
+
+            # ── Intel Layer: Threat Context (news + outage + macro) ────────────
+            if _NEWS_INTEL_AVAILABLE:
+                try:
+                    sector_for_threat = data.get("sector", "cyber")
+                    threat = _score_threat(ticker, sector_for_threat)
+                    # Apply modifiers to live scores
+                    new_opt = min(100, max(0, data["opt_score"] + threat["opt_modifier"]))
+                    new_lt  = min(100, max(0, data["lt_score"]  + threat["lt_modifier"]))
+                    data["opt_score"] = new_opt
+                    data["lt_score"]  = new_lt
+                    # Append threat signals to opt_reasons
+                    if threat["signals"]:
+                        data["opt_reasons"] = data.get("opt_reasons", []) + threat["signals"]
+                    data["threat_score"]    = threat["threat_score"]
+                    data["outage_status"]   = threat["outage_status"]
+                    data["breach_victim"]   = threat["breach_victim"]
+                    data["demand_signal"]   = threat["demand_signal"]
+                    data["spx_change_pct"]  = threat["spx_change_pct"]
+                except Exception as _te:
+                    logger.warning(f"Threat scoring failed for {ticker}: {_te}")
+                    data.setdefault("threat_score",  100)
+                    data.setdefault("outage_status", "none")
+                    data.setdefault("breach_victim", False)
+                    data.setdefault("demand_signal", False)
+            else:
+                data.setdefault("threat_score",  100)
+                data.setdefault("outage_status", "none")
+                data.setdefault("breach_victim", False)
+                data.setdefault("demand_signal", False)
 
             meta = _get_ticker_meta(ticker)
             data["sector"] = meta.get("sector", "cyber")
