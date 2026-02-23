@@ -26,6 +26,11 @@ import logging
 from datetime import datetime, timedelta
 
 try:
+    from core.universe import get_ticker_meta as _get_ticker_meta
+except ImportError:
+    _get_ticker_meta = lambda t: {"sector": "cyber", "subsector": "", "scoring_profile": "saas"}
+
+try:
     from core.timing import compute_timing_intelligence
     TIMING_AVAILABLE = True
 except Exception as _timing_err:
@@ -1598,6 +1603,10 @@ def run_scan(tickers=None, enable_sec=True, enable_sentiment=True, callback=None
                 data["opt_reasons"] = opt_reasons + all_intel_signals
                 data["lt_reasons"] = lt_reasons + [s for s in sec_sigs if "insider" in s.lower() or "analyst" in s.lower()]
 
+            meta = _get_ticker_meta(ticker)
+            data["sector"] = meta.get("sector", "cyber")
+            data["subsector"] = meta.get("subsector", "")
+            data["scoring_profile"] = meta.get("scoring_profile", "saas")
             results.append(data)
 
         time.sleep(0.15)

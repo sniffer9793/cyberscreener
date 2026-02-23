@@ -19,7 +19,7 @@ import hashlib
 import json
 
 from core.scanner import (
-    run_scan, ALL_TICKERS,
+    run_scan,
     fetch_options_chain, generate_plays, fetch_ticker_data,
     score_long_term, score_options, get_weights, set_weights,
     DEFAULT_LT_WEIGHTS, DEFAULT_OPT_WEIGHTS,
@@ -28,7 +28,10 @@ from core.universe import (
     CYBER_UNIVERSE, ENERGY_UNIVERSE, DEFENSE_UNIVERSE,
     get_universe_by_sector, get_sector_summary, get_all_tickers,
     ALL_CYBER_TICKERS, ALL_ENERGY_TICKERS, ALL_DEFENSE_TICKERS,
+    get_ticker_meta,
 )
+# Full multi-sector universe (cyber + energy + defense, deduplicated)
+ALL_TICKERS = sorted(list(set(ALL_CYBER_TICKERS + ALL_ENERGY_TICKERS + ALL_DEFENSE_TICKERS)))
 from db.models import (
     init_db, save_scan, get_score_history,
     get_all_scores_for_backtest, get_scan_count, get_db,
@@ -1014,3 +1017,237 @@ def get_stats():
 
     conn.close()
     return stats
+
+
+# ── Global Market Indices ──────────────────────────────────────────────────────
+
+import yfinance as yf
+
+_market_cache = {"data": None, "ts": 0}
+
+INDICES = [
+    ("^GSPC",    "S&P 500",   "NYSE",    "🇺🇸"),
+    ("^IXIC",    "NASDAQ",    "NASDAQ",  "🇺🇸"),
+    ("^DJI",     "Dow Jones", "NYSE",    "🇺🇸"),
+    ("^GDAXI",   "DAX",       "XETRA",   "🇩🇪"),
+    ("^FTSE",    "FTSE 100",  "LSE",     "🇬🇧"),
+    ("^N225",    "Nikkei",    "TSE",     "🇯🇵"),
+    ("^HSI",     "Hang Seng", "HKEX",    "🇭🇰"),
+    ("^FCHI",    "CAC 40",    "EURONEXT","🇫🇷"),
+    ("^STOXX50E","STOXX 50",  "EURONEXT","🇪🇺"),
+]
+
+# Exchange hours in UTC (open_h, open_m, close_h, close_m)
+EXCHANGE_HOURS = {
+    "NYSE":     (14, 30, 21,  0),
+    "NASDAQ":   (14, 30, 21,  0),
+    "LSE":      ( 8,  0, 16, 30),
+    "XETRA":    ( 8,  0, 16, 30),
+    "TSE":      ( 0,  0,  6,  0),
+    "HKEX":     ( 1, 30,  8,  0),
+    "EURONEXT": ( 8,  0, 16, 30),
+}
+
+def _exchange_is_open(exchange: str) -> bool:
+    now = datetime.utcnow()
+    # Skip weekends
+    if now.weekday() >= 5:
+        return False
+    hrs = EXCHANGE_HOURS.get(exchange)
+    if not hrs:
+        return False
+    oh, om, ch, cm = hrs
+    open_mins  = oh * 60 + om
+    close_mins = ch * 60 + cm
+    now_mins   = now.hour * 60 + now.minute
+    return open_mins <= now_mins < close_mins
+
+
+@app.get("/market/indices")
+def market_indices():
+    global _market_cache
+    if _market_cache["data"] and (time.time() - _market_cache["ts"]) < 300:
+        return _market_cache["data"]
+
+    results = []
+    for symbol, name, exchange, flag in INDICES:
+        try:
+            t = yf.Ticker(symbol)
+            fi = t.fast_info
+            price      = float(fi.get("last_price") or fi.get("regularMarketPrice") or 0)
+            prev_close = float(fi.get("previous_close") or fi.get("regularMarketPreviousClose") or price)
+            change_pct = ((price - prev_close) / prev_close * 100) if prev_close else 0.0
+            results.append({
+                "symbol":     symbol,
+                "name":       name,
+                "flag":       flag,
+                "exchange":   exchange,
+                "price":      round(price, 2),
+                "change_pct": round(change_pct, 2),
+                "is_open":    _exchange_is_open(exchange),
+            })
+        except Exception as e:
+            results.append({
+                "symbol":   symbol,
+                "name":     name,
+                "flag":     flag,
+                "exchange": exchange,
+                "price":    None,
+                "change_pct": None,
+                "is_open":  _exchange_is_open(exchange),
+                "error":    str(e),
+            })
+
+    _market_cache["data"] = results
+    _market_cache["ts"]   = time.time()
+    return results
+
+
+# ── Intel: Cyber News + Outages ────────────────────────────────────────────────
+
+import requests as _requests
+import xml.etree.ElementTree as _ET
+from concurrent.futures import ThreadPoolExecutor as _TPE
+
+_news_cache   = {"data": None, "ts": 0}
+_outage_cache = {"data": None, "ts": 0}
+
+NEWS_SOURCES = [
+    ("Bleeping Computer", "https://www.bleepingcomputer.com/feed/"),
+    ("Krebs on Security", "https://krebsonsecurity.com/feed/"),
+    ("Dark Reading",      "https://www.darkreading.com/rss.xml"),
+]
+
+NEWS_KEYWORDS = [
+    "breach", "ransomware", "hack", "exploit", "zero-day", "vulnerability",
+    "attack", "phishing", "malware", "outage", "leak", "credential",
+]
+
+STATUS_PAGES = {
+    "CRWD": ("CrowdStrike",     "https://status.crowdstrike.com/api/v2/summary.json"),
+    "NET":  ("Cloudflare",      "https://www.cloudflarestatus.com/api/v2/summary.json"),
+    "OKTA": ("Okta",            "https://status.okta.com/api/v2/summary.json"),
+    "DDOG": ("Datadog",         "https://status.datadoghq.com/api/v2/summary.json"),
+    "PANW": ("Palo Alto",       "https://status.paloaltonetworks.com/api/v2/summary.json"),
+    "ZS":   ("Zscaler",         "https://trust.zscaler.com/api/v2/summary.json"),
+    "S":    ("SentinelOne",     "https://status.sentinelone.com/api/v2/summary.json"),
+    "MSFT": ("Microsoft Azure", "https://azure.status.microsoft.com/en-us/status"),
+    "GOOGL":("Google Cloud",    "https://status.cloud.google.com/"),
+}
+
+# Use full ticker list for mention detection
+_ALL_TICKER_SET = set(ALL_TICKERS)
+
+
+def _fetch_rss(source_name: str, url: str) -> list:
+    items = []
+    try:
+        resp = _requests.get(url, timeout=8, headers={"User-Agent": "CyberScreener/1.0"})
+        root = _ET.fromstring(resp.content)
+        ns = {"content": "http://purl.org/rss/1.0/modules/content/"}
+        channel = root.find("channel") or root
+        for item in channel.findall("item")[:20]:
+            title   = (item.findtext("title") or "").strip()
+            desc    = (item.findtext("description") or "").strip()
+            link    = (item.findtext("link") or "").strip()
+            pub     = (item.findtext("pubDate") or "").strip()
+            combined = (title + " " + desc).lower()
+            tags = [kw for kw in NEWS_KEYWORDS if kw in combined]
+            mentions = [t for t in _ALL_TICKER_SET if t.lower() in combined.split()]
+            items.append({
+                "title":           title,
+                "summary":         desc[:200],
+                "link":            link,
+                "published":       pub,
+                "source":          source_name,
+                "tags":            tags,
+                "ticker_mentions": mentions,
+            })
+    except Exception:
+        pass
+    return items
+
+
+@app.get("/intel/news")
+def intel_news():
+    global _news_cache
+    if _news_cache["data"] and (time.time() - _news_cache["ts"]) < 1800:
+        return _news_cache["data"]
+
+    all_items = []
+    with _TPE(max_workers=3) as ex:
+        futures = {ex.submit(_fetch_rss, name, url): name for name, url in NEWS_SOURCES}
+        for f in futures:
+            all_items.extend(f.result())
+
+    # Sort by pubDate descending (best-effort; keep order if parsing fails)
+    def _parse_date(item):
+        try:
+            from email.utils import parsedate_to_datetime
+            return parsedate_to_datetime(item["published"])
+        except Exception:
+            return datetime.min
+
+    all_items.sort(key=_parse_date, reverse=True)
+
+    result = {"items": all_items[:30], "fetched_at": datetime.utcnow().isoformat()}
+    _news_cache["data"] = result
+    _news_cache["ts"]   = time.time()
+    return result
+
+
+def _check_statuspage(ticker: str, name: str, url: str) -> dict:
+    base = {
+        "ticker":              ticker,
+        "name":                name,
+        "url":                 url,
+        "status":              "unknown",
+        "indicator":           "none",
+        "components_affected": [],
+        "checked_at":          datetime.utcnow().isoformat(),
+    }
+    try:
+        if url.endswith(".json"):
+            resp = _requests.get(url, timeout=5)
+            data = resp.json()
+            indicator = data.get("status", {}).get("indicator", "none")
+            base["indicator"] = indicator
+            base["status"]    = "operational" if indicator == "none" else \
+                                "outage"      if indicator in ("major", "critical") else \
+                                "degraded"
+            affected = [
+                c["name"] for c in data.get("components", [])
+                if c.get("status", "operational") != "operational"
+            ]
+            base["components_affected"] = affected
+        else:
+            # HTTP health check fallback
+            resp = _requests.get(url, timeout=5)
+            base["indicator"] = "none" if resp.status_code < 400 else "major"
+            base["status"]    = "operational" if resp.status_code < 400 else "outage"
+    except Exception as e:
+        base["status"]    = "unknown"
+        base["indicator"] = "unknown"
+        base["error"]     = str(e)
+    return base
+
+
+@app.get("/intel/outages")
+def intel_outages():
+    global _outage_cache
+    if _outage_cache["data"] and (time.time() - _outage_cache["ts"]) < 300:
+        return _outage_cache["data"]
+
+    results = []
+    with _TPE(max_workers=6) as ex:
+        futures = {
+            ex.submit(_check_statuspage, ticker, name, url): ticker
+            for ticker, (name, url) in STATUS_PAGES.items()
+        }
+        for f in futures:
+            results.append(f.result())
+
+    results.sort(key=lambda x: x["ticker"])
+    _outage_cache["data"] = results
+    _outage_cache["ts"]   = time.time()
+    return results

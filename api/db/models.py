@@ -236,7 +236,8 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
                 lt_breakdown, opt_breakdown,
                 horizon, horizon_reason, horizon_confidence,
                 recommended_expiry, recommended_dte,
-                timing_signals, timing_debug
+                timing_signals, timing_debug,
+                sector, subsector, scoring_profile
             ) VALUES (
                 ?,?,?,?,
                 ?,?,
@@ -251,7 +252,8 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
                 ?,?,
                 ?,?,?,
                 ?,?,
-                ?,?
+                ?,?,
+                ?,?,?
             )
         """, (
             scan_id, r["ticker"], r.get("price"), r.get("market_cap_b"),
@@ -276,6 +278,7 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
             r.get("recommended_expiry"), r.get("recommended_dte"),
             json.dumps(r.get("timing_signals", [])),
             json.dumps(r.get("timing_debug", {})),
+            r.get("sector", "cyber"), r.get("subsector", ""), r.get("scoring_profile", "saas"),
         ))
 
         # Save price snapshot
