@@ -199,6 +199,16 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_scores_ticker ON scores(ticker);
         CREATE INDEX IF NOT EXISTS idx_prices_ticker_date ON prices(ticker, date);
         CREATE INDEX IF NOT EXISTS idx_signals_scan ON signals(scan_id);
+
+        -- Watchlist: custom tickers added by the user
+        CREATE TABLE IF NOT EXISTS watchlist (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker      TEXT    NOT NULL UNIQUE,
+            notes       TEXT    DEFAULT '',
+            sector      TEXT    DEFAULT 'unknown',
+            added_at    TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_watchlist_ticker ON watchlist(ticker);
     """)
 
     conn.commit()
@@ -408,6 +418,50 @@ def get_scan_count():
     count = conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
     conn.close()
     return count
+
+
+# ── Watchlist CRUD ────────────────────────────────────────────────────────────
+
+def get_watchlist():
+    """Return all watchlist items."""
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM watchlist ORDER BY added_at DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_to_watchlist(ticker: str, notes: str = "", sector: str = "unknown"):
+    """Add a ticker to the watchlist. Returns True if added, False if already exists."""
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO watchlist (ticker, notes, sector, added_at) VALUES (?, ?, ?, ?)",
+            (ticker.upper(), notes, sector, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
+        changed = conn.execute("SELECT changes()").fetchone()[0]
+        conn.commit()
+        return changed > 0
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def remove_from_watchlist(ticker: str):
+    """Remove a ticker from the watchlist."""
+    conn = get_db()
+    conn.execute("DELETE FROM watchlist WHERE ticker = ?", (ticker.upper(),))
+    conn.commit()
+    conn.close()
+
+
+def get_watchlist_tickers() -> list:
+    """Return just the ticker symbols from the watchlist."""
+    conn = get_db()
+    rows = conn.execute("SELECT ticker FROM watchlist").fetchall()
+    conn.close()
+    return [r["ticker"] for r in rows]
 
 
 # ── Backward-compatible aliases for old code (scheduler.py, db/__init__.py) ──

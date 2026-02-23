@@ -36,10 +36,12 @@ from db.models import (
     init_db, save_scan, get_score_history,
     get_all_scores_for_backtest, get_scan_count, get_db,
     save_score_weights, get_latest_weights,
+    get_watchlist, add_to_watchlist, remove_from_watchlist, get_watchlist_tickers,
 )
 from db.migrate_timing import run_migration as _run_timing_migration
 from db.migrate_sectors import run_migration as _run_sectors_migration
 from db.migrate_threat import run_migration as _run_threat_migration
+from db.migrate_watchlist import run_migration as _run_watchlist_migration
 from intel.earnings_calendar import seed_from_payload, save_earnings_date, get_all_upcoming_dates
 from backtest.engine import (
     run_full_backtest,
@@ -51,8 +53,37 @@ from backtest.engine import (
 
 API_PASSWORD = os.environ.get("CYBERSCREENER_PASSWORD", "cybershield2026")
 
-app = FastAPI(title="CyberScreener API", version="3.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# Allowed origins: production domain + local dev
+_ALLOWED_ORIGINS = [
+    "https://cyber.keltonshockey.com",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",
+]
+
+app = FastAPI(title="Augur API", version="3.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type", "X-API-Key"],
+    allow_credentials=False,
+)
+
+# ── Simple in-memory rate limiter ──────────────────────────────────────────────
+_rate_limits: dict = {}  # key -> list of timestamps
+
+def _check_rate_limit(key: str, max_calls: int = 10, window_seconds: int = 60) -> bool:
+    """Returns True if under limit (OK to proceed). False = rate limited."""
+    now = time.time()
+    cutoff = now - window_seconds
+    times = [t for t in _rate_limits.get(key, []) if t > cutoff]
+    if len(times) >= max_calls:
+        _rate_limits[key] = times
+        return False
+    times.append(now)
+    _rate_limits[key] = times
+    return True
 
 init_db()
 try:
@@ -69,6 +100,11 @@ try:
     _run_threat_migration()
 except Exception as _me:
     print(f"Threat migration warning: {_me}")
+try:
+    _run_watchlist_migration()
+    print("✅ Watchlist migration complete")
+except Exception as _me:
+    print(f"Watchlist migration warning: {_me}")
 
 # Load saved weights if available
 def _load_saved_weights():
@@ -377,8 +413,8 @@ _scan_status = {"running": False, "last_scan_id": None, "message": ""}
 @app.get("/api/info")
 def api_info():
     return {
-        "service": "CyberScreener API",
-        "version": "3.0.0",
+        "service": "Augur",
+        "version": "3.1.0",
         "scoring": "v2",
         "total_scans": get_scan_count(),
         "active_weights": get_weights(),
@@ -390,6 +426,8 @@ def get_tickers():
 
 @app.post("/scan", response_model=ScanStatus)
 def trigger_scan(req: ScanRequest, background_tasks: BackgroundTasks):
+    if not _check_rate_limit("scan", max_calls=5, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Too many scan requests. Try again in 5 minutes.")
     if _scan_status["running"]:
         return ScanStatus(status="busy", message="A scan is already running.")
     background_tasks.add_task(_run_scan_background, req)
@@ -400,7 +438,13 @@ def _run_scan_background(req: ScanRequest):
     _scan_status["running"] = True
     _scan_status["message"] = "Scanning..."
     start_time = time.time()
-    tickers = req.tickers or ALL_TICKERS
+    # Merge standard universe with watchlist tickers
+    try:
+        wl_tickers = get_watchlist_tickers()
+    except Exception:
+        wl_tickers = []
+    base_tickers = req.tickers or ALL_TICKERS
+    tickers = sorted(set(base_tickers) | set(wl_tickers))
     try:
         def progress_callback(ticker, i, total):
             _scan_status["message"] = f"Scanning {ticker} ({i+1}/{total})"
@@ -1301,3 +1345,255 @@ def intel_outages():
     _outage_cache["data"] = results
     _outage_cache["ts"]   = time.time()
     return results
+
+
+# ── Killer Plays — High-conviction plays from latest scan ──────────────────────
+
+@app.get("/killer-plays")
+def get_killer_plays(limit: int = Query(8, ge=1, le=15)):
+    """
+    Return the highest-conviction plays from the latest scan.
+    Criteria: opt_score >= 55, lt_score >= 40, no active outage/breach.
+    Sorted by combined score (opt*0.6 + lt*0.4).
+    """
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT s.ticker, s.price, s.opt_score, s.lt_score, s.rsi, s.days_to_earnings,
+               s.threat_score, s.outage_status, s.breach_victim, s.demand_signal,
+               s.bb_width, s.vol_ratio, s.sector, s.pct_from_52w_high, s.beta,
+               s.iv_30d, s.horizon, s.recommended_expiry, s.iv_rank
+        FROM scores s
+        INNER JOIN (
+            SELECT ticker, MAX(scan_id) AS max_scan_id
+            FROM scores GROUP BY ticker
+        ) latest ON s.ticker = latest.ticker AND s.scan_id = latest.max_scan_id
+        WHERE s.opt_score >= 55
+          AND s.lt_score >= 40
+          AND (s.threat_score IS NULL OR s.threat_score >= 70)
+          AND (s.outage_status IS NULL OR s.outage_status NOT IN ('outage'))
+          AND (s.breach_victim IS NULL OR s.breach_victim = 0)
+        ORDER BY (s.opt_score * 0.6 + s.lt_score * 0.4) DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+
+    results = []
+    for r in rows:
+        row = dict(r)
+        rsi = row.get("rsi") or 50
+        dte = row.get("days_to_earnings")
+        # Directional signal from RSI
+        if rsi > 68:
+            row["direction"] = "bearish"
+            row["direction_label"] = "📉 Bearish"
+        elif rsi < 36:
+            row["direction"] = "bullish"
+            row["direction_label"] = "📈 Bullish"
+        else:
+            row["direction"] = "neutral"
+            row["direction_label"] = "↔ Neutral"
+        # Primary catalyst
+        if dte is not None and 5 <= dte <= 30:
+            row["catalyst"] = f"⚡ Earnings {dte}d"
+        elif row.get("demand_signal"):
+            row["catalyst"] = "🌋 Demand Signal"
+        elif row.get("bb_width") and row["bb_width"] < 12:
+            row["catalyst"] = "⟨⟩ BB Squeeze"
+        else:
+            row["catalyst"] = "📊 Technical"
+        row["combined_score"] = round((row.get("opt_score") or 0) * 0.6 + (row.get("lt_score") or 0) * 0.4, 1)
+        results.append(row)
+
+    return {
+        "plays": results,
+        "total": len(results),
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+# ── Signals Feed — Recent scoring signals for a ticker ────────────────────────
+
+@app.get("/signals/{ticker}/recent")
+def get_recent_signals(ticker: str, limit: int = Query(40, ge=5, le=100)):
+    """Return recent scoring signals for a ticker from the signals table."""
+    t = ticker.upper()
+    # Basic ticker validation
+    if not t.replace(".", "").isalnum() or len(t) > 10:
+        raise HTTPException(status_code=400, detail="Invalid ticker")
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT sg.signal_text, sg.impact, sc.timestamp AS scan_ts
+        FROM signals sg
+        JOIN scans sc ON sg.scan_id = sc.id
+        WHERE sg.ticker = ?
+        ORDER BY sg.id DESC LIMIT ?
+    """, (t, limit)).fetchall()
+    conn.close()
+    return {"ticker": t, "signals": [dict(r) for r in rows], "total": len(rows)}
+
+
+# ── Watchlist — Custom ticker tracking ────────────────────────────────────────
+
+class WatchlistAddRequest(BaseModel):
+    ticker: str
+    notes: Optional[str] = ""
+    sector: Optional[str] = "unknown"
+
+
+@app.get("/watchlist")
+def watchlist_list():
+    """Return all watchlist items with their latest scan scores."""
+    items = get_watchlist()
+    if not items:
+        return {"items": [], "total": 0}
+    conn = get_db()
+    for item in items:
+        t = item["ticker"]
+        score_row = conn.execute("""
+            SELECT s.lt_score, s.opt_score, s.price, s.rsi, s.threat_score,
+                   s.outage_status, s.sector as scored_sector
+            FROM scores s
+            INNER JOIN (
+                SELECT ticker, MAX(scan_id) AS max_scan_id FROM scores GROUP BY ticker
+            ) latest ON s.ticker = latest.ticker AND s.scan_id = latest.max_scan_id
+            WHERE s.ticker = ?
+        """, (t,)).fetchone()
+        if score_row:
+            item.update(dict(score_row))
+            item["has_scores"] = True
+        else:
+            item["has_scores"] = False
+    conn.close()
+    return {"items": items, "total": len(items)}
+
+
+@app.post("/watchlist")
+def watchlist_add(req: WatchlistAddRequest):
+    """Add a ticker to the watchlist."""
+    ticker = req.ticker.upper().strip()
+    # Validate ticker format
+    if not ticker or len(ticker) > 10 or not ticker.replace(".", "").isalnum():
+        raise HTTPException(status_code=400, detail="Invalid ticker format (max 10 chars, alphanumeric)")
+    try:
+        added = add_to_watchlist(ticker, notes=req.notes or "", sector=req.sector or "unknown")
+        return {
+            "status": "added" if added else "already_exists",
+            "ticker": ticker,
+            "message": f"{ticker} {'added to' if added else 'already in'} watchlist",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/watchlist/{ticker}")
+def watchlist_remove(ticker: str):
+    """Remove a ticker from the watchlist."""
+    t = ticker.upper()
+    if not t.replace(".", "").isalnum() or len(t) > 10:
+        raise HTTPException(status_code=400, detail="Invalid ticker")
+    remove_from_watchlist(t)
+    return {"status": "removed", "ticker": t}
+
+
+# ── Email Alerts ───────────────────────────────────────────────────────────────
+
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASS = os.environ.get("SMTP_PASS", "")
+ALERT_EMAIL = os.environ.get("ALERT_EMAIL", "")
+
+
+def _send_email(subject: str, body_html: str) -> bool:
+    """Send an HTML email alert. Returns True on success."""
+    if not all([SMTP_HOST, SMTP_USER, SMTP_PASS, ALERT_EMAIL]):
+        print("⚠️ Email not configured (set SMTP_HOST, SMTP_USER, SMTP_PASS, ALERT_EMAIL env vars)")
+        return False
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = SMTP_USER
+        msg["To"] = ALERT_EMAIL
+        msg.attach(MIMEText(body_html, "html"))
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASS)
+            server.sendmail(SMTP_USER, ALERT_EMAIL, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"⚠️ Email send failed: {e}")
+        return False
+
+
+@app.post("/alerts/send-killer-plays")
+def send_killer_plays_alert():
+    """Fetch killer plays and send an email alert."""
+    if not _check_rate_limit("email_alert", max_calls=3, window_seconds=3600):
+        raise HTTPException(status_code=429, detail="Email alert rate limit: max 3/hour")
+
+    # Get top plays
+    plays_data = get_killer_plays(limit=8)
+    plays = plays_data.get("plays", [])
+    if not plays:
+        return {"status": "skipped", "message": "No killer plays found meeting criteria"}
+
+    # Build HTML email
+    rows_html = ""
+    for p in plays:
+        rows_html += f"""
+        <tr style="border-bottom:1px solid #eee">
+          <td style="padding:8px 12px;font-weight:700;font-family:monospace">{p['ticker']}</td>
+          <td style="padding:8px 12px">${p.get('price','—')}</td>
+          <td style="padding:8px 12px;color:{'#34c759' if (p.get('opt_score',0))>=65 else '#ff9500'};font-weight:700">{p.get('opt_score','—')}</td>
+          <td style="padding:8px 12px;color:#007aff;font-weight:700">{p.get('lt_score','—')}</td>
+          <td style="padding:8px 12px">{p.get('catalyst','—')}</td>
+          <td style="padding:8px 12px">{p.get('direction_label','—')}</td>
+          <td style="padding:8px 12px;font-weight:700">{p.get('combined_score','—')}</td>
+        </tr>"""
+
+    body_html = f"""
+    <html><body style="font-family:-apple-system,sans-serif;color:#1d1d1f;background:#f5f5f7;padding:0;margin:0">
+    <div style="max-width:700px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
+      <div style="padding:24px 28px;background:linear-gradient(135deg,#007aff,#5856d6)">
+        <h1 style="margin:0;color:#fff;font-size:22px">⚡ Augur Killer Plays Alert</h1>
+        <p style="margin:6px 0 0;color:rgba(255,255,255,.8);font-size:13px">{datetime.now().strftime('%B %d, %Y at %H:%M UTC')} · {len(plays)} high-conviction opportunities</p>
+      </div>
+      <div style="padding:24px 28px">
+        <p style="font-size:13px;color:#86868b;margin-bottom:16px">These tickers scored ≥55 opt + ≥40 LT with no active threat signals. Review on Augur before acting.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:#f5f5f7;border-bottom:2px solid #e5e5ea">
+            <th style="padding:8px 12px;text-align:left">Ticker</th>
+            <th style="padding:8px 12px;text-align:left">Price</th>
+            <th style="padding:8px 12px;text-align:left">Opt</th>
+            <th style="padding:8px 12px;text-align:left">LT</th>
+            <th style="padding:8px 12px;text-align:left">Catalyst</th>
+            <th style="padding:8px 12px;text-align:left">Direction</th>
+            <th style="padding:8px 12px;text-align:left">Score</th>
+          </tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+        <p style="margin-top:20px;font-size:11px;color:#aeaeb2">⚠️ For research only. Not financial advice. Past signals do not guarantee future results.</p>
+      </div>
+    </div></body></html>"""
+
+    sent = _send_email(f"⚡ Augur: {len(plays)} Killer Plays Found", body_html)
+    return {
+        "status": "sent" if sent else "email_not_configured",
+        "plays_count": len(plays),
+        "plays": [p["ticker"] for p in plays],
+    }
+
+
+@app.get("/alerts/config")
+def get_alert_config():
+    """Check email alert configuration status."""
+    return {
+        "configured": bool(SMTP_HOST and SMTP_USER and SMTP_PASS and ALERT_EMAIL),
+        "smtp_host": SMTP_HOST or "(not set)",
+        "alert_email": ALERT_EMAIL or "(not set)",
+        "required_env_vars": ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "ALERT_EMAIL"],
+    }
