@@ -26,9 +26,17 @@ import logging
 from datetime import datetime, timedelta
 
 try:
-    from core.universe import get_ticker_meta as _get_ticker_meta
+    from core.universe import (
+        get_ticker_meta as _get_ticker_meta,
+        ALL_CYBER_TICKERS as _CYB,
+        ALL_ENERGY_TICKERS as _ENR,
+        ALL_DEFENSE_TICKERS as _DEF,
+    )
+    _UNIVERSE_IMPORTED = True
 except ImportError:
     _get_ticker_meta = lambda t: {"sector": "cyber", "subsector": "", "scoring_profile": "saas"}
+    _CYB, _ENR, _DEF = [], [], []
+    _UNIVERSE_IMPORTED = False
 
 try:
     from core.timing import compute_timing_intelligence
@@ -58,6 +66,8 @@ except ImportError:
 # ─────────────────────────────────────────────
 # TICKER UNIVERSE
 # ─────────────────────────────────────────────
+# Full multi-sector universe sourced from core/universe.py.
+# Kept as a local fallback for import-order safety.
 
 CYBER_UNIVERSE = {
     "Platform Giants": ["CRWD", "PANW", "FTNT", "ZS", "CSCO"],
@@ -74,7 +84,13 @@ CYBER_UNIVERSE = {
     "ETF Benchmarks": ["CIBR", "HACK", "BUG"],
 }
 
-ALL_TICKERS = sorted(list(set(t for tickers in CYBER_UNIVERSE.values() for t in tickers)))
+_CYBER_FALLBACK = sorted(list(set(t for tickers in CYBER_UNIVERSE.values() for t in tickers)))
+
+# Use full multi-sector universe when universe.py is available
+if _UNIVERSE_IMPORTED and (_CYB or _ENR or _DEF):
+    ALL_TICKERS = sorted(list(set(_CYB + _ENR + _DEF)))
+else:
+    ALL_TICKERS = _CYBER_FALLBACK
 
 
 # ─────────────────────────────────────────────

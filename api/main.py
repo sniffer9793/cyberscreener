@@ -423,14 +423,28 @@ def scan_status():
     return _scan_status
 
 @app.get("/scores/latest")
-def get_latest_scores(limit: int = Query(50, ge=1, le=100)):
+def get_latest_scores(limit: int = Query(100, ge=1, le=200)):
+    """
+    Return the most recent score for each ticker across all scans.
+    Uses a per-ticker max(scan_id) join so partial scans (e.g. 5-ticker
+    test runs) don't erase older data for tickers not in that scan.
+    """
     conn = get_db()
     scan = conn.execute("SELECT id, timestamp FROM scans ORDER BY id DESC LIMIT 1").fetchone()
     if not scan:
         conn.close()
         return {"message": "No scans found.", "results": []}
-    rows = conn.execute("SELECT * FROM scores WHERE scan_id = ? ORDER BY lt_score DESC LIMIT ?",
-                        (scan["id"], limit)).fetchall()
+    rows = conn.execute("""
+        SELECT s.*
+        FROM scores s
+        INNER JOIN (
+            SELECT ticker, MAX(scan_id) AS max_scan_id
+            FROM scores
+            GROUP BY ticker
+        ) latest ON s.ticker = latest.ticker AND s.scan_id = latest.max_scan_id
+        ORDER BY s.lt_score DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
     conn.close()
     return {"scan_id": scan["id"], "scan_timestamp": scan["timestamp"], "results": [dict(r) for r in rows]}
 
@@ -994,6 +1008,25 @@ def earnings_set(req: EarningsSetRequest):
 @app.get("/earnings/upcoming")
 def earnings_upcoming():
     return {"dates": get_all_upcoming_dates()}
+
+
+@app.get("/weights/history")
+def get_weights_history(limit: int = Query(50, ge=1, le=200)):
+    """Return full calibration history from score_weights table."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM score_weights ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    history = []
+    for r in rows:
+        entry = dict(r)
+        try:
+            entry["weights"] = json.loads(entry.get("weights_json") or "{}")
+        except Exception:
+            entry["weights"] = {}
+        history.append(entry)
+    return {"history": history, "count": len(history)}
 
 
 @app.get("/stats")

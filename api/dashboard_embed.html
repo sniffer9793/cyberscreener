@@ -366,28 +366,145 @@ function PlaysTab({latest}){
 // ─── Backtest ───
 function BacktestTab({backtest:init}){
   const [period,setPeriod]=useState(30),[data,setData]=useState(init),[loading,setLoading]=useState(false);
+  const [wtHist,setWtHist]=useState(null),[calRunning,setCalRunning]=useState(false),[calMsg,setCalMsg]=useState("");
   const loadBT=useCallback(async fwd=>{setLoading(true);const d=await api("/backtest?days=180&forward_period="+fwd);if(d)setData(d);setLoading(false)},[]);
-  useEffect(()=>{if(!data)loadBT(period)},[]);
-  if(loading)return React.createElement("div",{style:{color:C.textSec,padding:40,textAlign:"center"}},"Running backtest...");
-  if(!data)return React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),React.createElement("div",{style:{fontSize:15,fontWeight:600}},"Loading backtest..."));
+  const loadWH=useCallback(async()=>{const d=await api("/weights/history?limit=30");if(d)setWtHist(d)},[]);
+  useEffect(()=>{if(!data)loadBT(period);loadWH()},[]);
+  const runCalibrate=async()=>{setCalRunning(true);setCalMsg("Calibrating weights…");const d=await api("/calibrate",{method:"POST"});setCalRunning(false);if(d&&d.status==="calibrated"){setCalMsg("✓ Weights updated");loadWH()}else setCalMsg(d?.message||"Insufficient data")};
+
+  if(loading)return React.createElement("div",{style:{color:C.textSec,padding:40,textAlign:"center"}},"Running backtest…");
+  if(!data)return React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),React.createElement("div",{style:{fontSize:15,fontWeight:600}},"Loading backtest…"));
+
   const sd=data.score_vs_returns||{},ld=data.layer_attribution||{},ed=data.earnings_timing||{};
   const ltA=sd.lt_analysis||{},optA=sd.opt_analysis||{};
   const ltCorr=ltA.correlation,optCorr=optA.correlation;
+  const qs=ltA.quintile_spread;
+  const obs=ltA.data_points||0;
+
+  // Model health badge
+  const modelHealth=(ltCorr>0.15&&qs>2)?"Strong":(ltCorr>0.05||qs>1)?"Moderate":"Weak";
+  const modelCol=modelHealth==="Strong"?C.green:modelHealth==="Moderate"?C.amber:C.red;
+
   const qc=[];if(ltA.status==="ok"&&ltA.quintiles)Object.entries(ltA.quintiles).forEach(([l,s])=>{qc.push({name:l,"return":s.avg_return,winRate:s.win_rate,count:s.count})});
+  const q1ret=qc.find(q=>q.name==="Q1")?.return||0,q5ret=qc.find(q=>q.name==="Q5")?.return||0;
+  const spread=q5ret-q1ret;
+
   const compLabels={lt_rule_of_40:"Rule of 40",lt_valuation:"Valuation",lt_fcf_margin:"FCF Margin",lt_trend:"Trend",lt_earnings_quality:"Earn. Quality",lt_discount_momentum:"Disc. Mom."};
-  const lc=[];if(ld.lt_component_attribution)Object.entries(ld.lt_component_attribution).forEach(([k,v])=>{if(v.correlation!=null)lc.push({name:compLabels[k]||k,alpha:v.correlation})});
+  const lc=[];if(ld.lt_component_attribution)Object.entries(ld.lt_component_attribution).forEach(([k,v])=>{if(v.correlation!=null)lc.push({name:compLabels[k]||k,alpha:v.correlation,alpha_pct:v.correlation*100})});
+  lc.sort((a,b)=>b.alpha-a.alpha);
+
   const ec=[];if(ed.forward_14d&&ed.forward_30d)Object.entries(ed.forward_14d).forEach(([label,v14])=>{const v30=ed.forward_30d[label]||{};if((v14.count||0)>0||(v30.count||0)>0)ec.push({name:label,return14d:v14.avg_return||0,return30d:v30.avg_return||0,count:v14.count||0})});
   const bestWindow=ec.length>0?ec.reduce((a,b)=>a.return14d>b.return14d?a:b).name:"—";
+
+  // Weight history helpers
+  const WH=wtHist?.history||[];
+  const ltHist=WH.filter(w=>w.score_type==="lt").slice(0,10);
+  const ltKeys=["rule_of_40","valuation","fcf_margin","trend","earnings_quality","discount_momentum"];
+  const ltLabels={rule_of_40:"Rule of 40",valuation:"Valuation",fcf_margin:"FCF Margin",trend:"Trend",earnings_quality:"Earn. Quality",discount_momentum:"Disc. Mom."};
+
   return React.createElement("div",{className:"fade-in",style:{display:"flex",flexDirection:"column",gap:20}},
-    React.createElement("div",{style:{padding:"14px 18px",background:C.blueBg,borderRadius:12,border:"1px solid "+C.blueBorder,fontSize:12,lineHeight:1.6}},React.createElement("strong",null,"Backtest:")," Scores grouped into quintiles (Q1=lowest, Q5=highest) vs actual forward returns. If model works, Q5 outperforms Q1."),
-    React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center"}},React.createElement("span",{style:{fontSize:12,color:C.textSec,fontWeight:500}},"Forward:"),
+
+    // ── Model health header ──
+    React.createElement(Card,{style:{padding:20}},
+      React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}},
+        React.createElement("div",null,
+          React.createElement("h2",{style:{fontSize:17,fontWeight:700,margin:0}},"Model Health"),
+          React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:"4px 0 0"}},"180-day lookback · "+obs+" score/return observations")),
+        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10}},
+          React.createElement("span",{style:{fontSize:13,fontWeight:700,padding:"6px 14px",borderRadius:8,background:modelCol+"18",color:modelCol,border:"1px solid "+modelCol+"40"}},modelHealth+" Signal"),
+          React.createElement("button",{onClick:runCalibrate,disabled:calRunning,style:{padding:"8px 16px",borderRadius:8,fontSize:12,fontWeight:600,cursor:calRunning?"wait":"pointer",background:C.blueBg,color:C.blue,border:"1px solid "+C.blueBorder}},calRunning?"Calibrating…":"⚙ Auto-Calibrate"),
+          calMsg&&React.createElement("span",{style:{fontSize:11,color:C.textSec}},calMsg))),
+      React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}},
+        React.createElement(Metric,{label:"LT Score Correlation",value:ltCorr!=null?ltCorr.toFixed(3):"—",color:ltCorr!=null?(ltCorr>0.15?C.green:ltCorr>0.05?C.amber:C.red):C.textSec,sub:ltCorr!=null?(ltCorr>0.15?"Strong predictive power":ltCorr>0.05?"Moderate signal":"Weak / no signal"):"No data yet"}),
+        React.createElement(Metric,{label:"Q5 − Q1 Spread",value:spread!=null?spread.toFixed(1)+"%":"—",color:spread>3?C.green:spread>1?C.amber:C.red,sub:spread>3?"Top scores beat bottom by >3%":spread>1?"Moderate separation":"Scores not yet discriminating"}),
+        React.createElement(Metric,{label:"Opt Score Correlation",value:optCorr!=null?optCorr.toFixed(3):"—",color:optCorr!=null?(optCorr>0.1?C.green:optCorr<-0.05?C.red:C.amber):C.textSec,sub:"Options score vs "+period+"d return"}),
+        React.createElement(Metric,{label:"Best Entry Window",value:bestWindow,color:C.blue,sub:"Days-to-earnings timing"}))),
+
+    // ── Forward period selector ──
+    React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+      React.createElement("span",{style:{fontSize:12,color:C.textSec,fontWeight:600}},"Forward return window:"),
       [14,30,60].map(p=>React.createElement("button",{key:p,onClick:()=>{setPeriod(p);loadBT(p)},style:{padding:"7px 16px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:mono,background:period===p?C.blueBg:C.bgCard,border:"1px solid "+(period===p?C.blue+"40":C.border),color:period===p?C.blue:C.textSec}},p+"d")),
-      React.createElement("span",{style:{fontSize:11,color:C.textTri,marginLeft:"auto",fontFamily:mono}},(ltA.data_points||0)+" obs")),
-    ltCorr!=null&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},React.createElement(Metric,{label:"LT ↔ Return",value:ltCorr.toFixed(3),color:ltCorr>0.1?C.green:ltCorr<-0.05?C.red:C.amber,sub:ltCorr>0.15?"Strong ✓":ltCorr>0.05?"Weak":"No signal"}),React.createElement(Metric,{label:"Opt ↔ Return",value:optCorr!=null?optCorr.toFixed(3):"—",color:optCorr!=null?(optCorr>0.1?C.green:optCorr<-0.05?C.red:C.amber):C.textSec})),
-    qc.length>0&&React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:2}},"Score Quintile → Return"),React.createElement("p",{style:{fontSize:12,color:C.textSec,marginBottom:12}},"Do scores predict "+period+"-day returns?"),React.createElement(SvgBarChart,{data:qc,dataKey:"return",labelKey:"name",height:260,colorFn:(d,v)=>v>=0?C.green:C.red}),React.createElement("div",{style:{display:"flex",gap:16,marginTop:10}},qc.map(d=>React.createElement("div",{key:d.name,style:{fontSize:10,color:C.textSec,textAlign:"center",flex:1,fontFamily:mono}},"n="+d.count+" · "+(d.winRate||0).toFixed(0)+"%w")))),
-    lc.length>0&&React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:2}},"Layer Alpha"),React.createElement("p",{style:{fontSize:12,color:C.textSec,marginBottom:12}},"Return difference: signal present vs absent"),React.createElement(SvgHorizBarChart,{data:lc,dataKey:"alpha",labelKey:"name",height:180})),
-    ec.length>0&&React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:2}},"Earnings Entry Timing"),React.createElement("p",{style:{fontSize:12,color:C.textSec,marginBottom:12}},"Best entry: "+bestWindow),React.createElement(SvgGroupedBarChart,{data:ec,bars:[{key:"return14d",name:"14d Return",color:C.blue},{key:"return30d",name:"30d Return",color:C.purple}],labelKey:"name",height:220})),
-    qc.length===0&&lc.length===0&&React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),React.createElement("div",{style:{fontSize:15,fontWeight:600,marginBottom:6}},"Need more data"),React.createElement("div",{style:{fontSize:12,color:C.textSec}},"Run scans over multiple days to build history.")));}
+      React.createElement("span",{style:{fontSize:11,color:C.textTri,marginLeft:"auto",fontFamily:mono}},obs+" observations")),
+
+    // ── Quintile chart ──
+    qc.length>0&&React.createElement(Card,{style:{padding:20}},
+      React.createElement("div",{style:{marginBottom:14}},
+        React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:"0 0 4px"}},"Score Quintile → "+period+"d Return"),
+        React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:0,lineHeight:1.6}},"Tickers ranked by LT Score and split into 5 equal buckets (Q1=lowest 20%, Q5=highest 20%). Their actual "+period+"-day stock returns are averaged per bucket. ",React.createElement("strong",null,"A working model shows Q5 outperforming Q1.")," A flat or inverted chart means scores aren't yet predictive — run Auto-Calibrate to reweight.")),
+      React.createElement(SvgBarChart,{data:qc,dataKey:"return",labelKey:"name",height:240,colorFn:(d,v)=>v>=0?C.green:C.red}),
+      React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginTop:12}},
+        qc.map(d=>React.createElement("div",{key:d.name,style:{padding:"8px 10px",background:C.bg,borderRadius:8,border:"1px solid "+C.border,textAlign:"center"}},
+          React.createElement("div",{style:{fontSize:11,fontWeight:700,fontFamily:mono,color:d.return>=0?C.green:C.red}},(d.return>=0?"+":"")+d.return.toFixed(1)+"%"),
+          React.createElement("div",{style:{fontSize:10,color:C.textSec,marginTop:2}},d.name+" · n="+d.count),
+          React.createElement("div",{style:{fontSize:10,color:C.textTri}},(d.winRate||0).toFixed(0)+"% winners"))))),
+
+    // ── Layer alpha ──
+    lc.length>0&&React.createElement(Card,{style:{padding:20}},
+      React.createElement("div",{style:{marginBottom:14}},
+        React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:"0 0 4px"}},"Component Predictive Power"),
+        React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:0,lineHeight:1.6}},"Pearson correlation between each score component and "+period+"-day forward returns. ",React.createElement("strong",null,"Positive = component predicts gains; negative = contrarian or noisy.")," Components with high correlation should have higher weights — use Auto-Calibrate to apply.")),
+      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+        lc.map(item=>{
+          const pct=Math.abs(item.alpha)*100,maxBar=200,barW=Math.min(100,pct*maxBar);
+          const col=item.alpha>0.05?C.green:item.alpha<-0.02?C.red:C.textSec;
+          return React.createElement("div",{key:item.name,style:{display:"grid",gridTemplateColumns:"140px 1fr 70px",alignItems:"center",gap:10}},
+            React.createElement("span",{style:{fontSize:12,fontWeight:600,color:C.text}},item.name),
+            React.createElement("div",{style:{height:8,background:C.border,borderRadius:4,overflow:"hidden"}},
+              React.createElement("div",{style:{height:"100%",width:barW+"%",background:col,borderRadius:4,transition:"width .4s"}})),
+            React.createElement("span",{style:{fontSize:12,fontFamily:mono,fontWeight:700,color:col,textAlign:"right"}},(item.alpha>=0?"+":"")+item.alpha.toFixed(3)))})),
+      React.createElement("p",{style:{fontSize:11,color:C.textTri,marginTop:12}},"Interpretation: >+0.10 = strong positive signal · -0.02 to +0.10 = neutral · <-0.02 = noisy or contrarian")),
+
+    // ── Earnings timing ──
+    ec.length>0&&React.createElement(Card,{style:{padding:20}},
+      React.createElement("div",{style:{marginBottom:14}},
+        React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:"0 0 4px"}},"Earnings Entry Timing"),
+        React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:0,lineHeight:1.6}},"Average returns when entering a position at different distances from earnings. ",React.createElement("strong",null,"Best window: "+bestWindow+".")," This tells you the optimal time to open options plays relative to the catalyst.")),
+      React.createElement(SvgGroupedBarChart,{data:ec,bars:[{key:"return14d",name:"14d Return",color:C.blue},{key:"return30d",name:"30d Return",color:C.purple}],labelKey:"name",height:200}),
+      React.createElement("div",{style:{display:"flex",gap:16,marginTop:10,flexWrap:"wrap"}},
+        ec.map(d=>React.createElement("div",{key:d.name,style:{padding:"6px 10px",background:C.bg,borderRadius:6,border:"1px solid "+C.border,fontSize:11}},
+          React.createElement("div",{style:{fontWeight:700,marginBottom:2}},d.name),
+          React.createElement("div",{style:{color:C.blue,fontFamily:mono}},"14d: "+(d.return14d>=0?"+":"")+d.return14d.toFixed(1)+"%"),
+          React.createElement("div",{style:{color:C.purple,fontFamily:mono}},"30d: "+(d.return30d>=0?"+":"")+d.return30d.toFixed(1)+"%"),
+          React.createElement("div",{style:{color:C.textTri,marginTop:2}},"n="+d.count))))),
+
+    // ── Weight calibration log ──
+    React.createElement(Card,{style:{padding:20}},
+      React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}},
+        React.createElement("div",null,
+          React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:"0 0 4px"}},"Weight Calibration Log"),
+          React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:0}},"History of all LT score weight adjustments made by Auto-Calibrate")),
+        React.createElement("button",{onClick:loadWH,style:{padding:"6px 14px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",background:C.bg,color:C.textSec,border:"1px solid "+C.border}},"↻ Refresh")),
+      ltHist.length===0&&React.createElement("div",{style:{padding:"20px 0",textAlign:"center",color:C.textSec,fontSize:13}},"No calibrations yet. Click Auto-Calibrate above to run the first one."),
+      ltHist.length>0&&React.createElement("div",{style:{overflowX:"auto"}},
+        React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:12}},
+          React.createElement("thead",null,
+            React.createElement("tr",{style:{borderBottom:"2px solid "+C.border}},
+              React.createElement("th",{style:{padding:"6px 8px",textAlign:"left",color:C.textSec,fontWeight:600}},"Date"),
+              React.createElement("th",{style:{padding:"6px 8px",textAlign:"right",color:C.textSec,fontWeight:600}},"Corr"),
+              React.createElement("th",{style:{padding:"6px 8px",textAlign:"right",color:C.textSec,fontWeight:600}},"Q-Spread"),
+              ltKeys.map(k=>React.createElement("th",{key:k,style:{padding:"6px 8px",textAlign:"right",color:C.textSec,fontWeight:600,fontSize:10}},ltLabels[k]||k)))),
+          React.createElement("tbody",null,
+            ltHist.map((row,i)=>{
+              const prev=ltHist[i+1];
+              const w=row.weights||{},pw=prev?.weights||{};
+              return React.createElement("tr",{key:row.id,style:{borderBottom:"1px solid "+C.border,background:i%2===0?C.bg:"transparent"}},
+                React.createElement("td",{style:{padding:"6px 8px",color:C.textSec,whiteSpace:"nowrap"}},row.timestamp?.slice(0,16)||"—"),
+                React.createElement("td",{style:{padding:"6px 8px",textAlign:"right",fontFamily:mono,color:row.backtest_correlation!=null?(row.backtest_correlation>0.1?C.green:row.backtest_correlation<0?C.red:C.amber):C.textSec}},row.backtest_correlation!=null?row.backtest_correlation.toFixed(3):"—"),
+                React.createElement("td",{style:{padding:"6px 8px",textAlign:"right",fontFamily:mono,color:row.backtest_quintile_spread!=null?(row.backtest_quintile_spread>2?C.green:C.amber):C.textSec}},row.backtest_quintile_spread!=null?row.backtest_quintile_spread.toFixed(1)+"%":"—"),
+                ltKeys.map(k=>{
+                  const cur=w[k],prv=pw[k];
+                  const delta=cur!=null&&prv!=null?cur-prv:null;
+                  return React.createElement("td",{key:k,style:{padding:"6px 8px",textAlign:"right",fontFamily:mono}},
+                    cur!=null?React.createElement("span",null,
+                      cur,
+                      delta!=null&&delta!==0&&React.createElement("span",{style:{fontSize:10,color:delta>0?C.green:C.red,marginLeft:3}},(delta>0?"+":"")+delta)):
+                    "—")}))}))))),
+
+    // ── No data fallback ──
+    qc.length===0&&lc.length===0&&React.createElement(Card,{style:{padding:40,textAlign:"center"}},
+      React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),
+      React.createElement("div",{style:{fontSize:15,fontWeight:600,marginBottom:6}},"Not enough data yet"),
+      React.createElement("div",{style:{fontSize:12,color:C.textSec,maxWidth:400,margin:"0 auto",lineHeight:1.7}},"The backtest engine needs scores from multiple days to measure predictive power. Scans run automatically every 2 hours during market hours. Come back tomorrow to see your first correlation data.")));}
 
 // ─── Intel Tab ───
 function IntelTab(){
