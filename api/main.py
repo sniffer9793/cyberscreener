@@ -37,11 +37,15 @@ from db.models import (
     get_all_scores_for_backtest, get_scan_count, get_db,
     save_score_weights, get_latest_weights,
     get_watchlist, add_to_watchlist, remove_from_watchlist, get_watchlist_tickers,
+    # P2: P&L tracking
+    log_play, get_open_plays, close_play, get_play_history, get_play_stats,
 )
 from db.migrate_timing import run_migration as _run_timing_migration
 from db.migrate_sectors import run_migration as _run_sectors_migration
 from db.migrate_threat import run_migration as _run_threat_migration
 from db.migrate_watchlist import run_migration as _run_watchlist_migration
+from db.migrate_options_plays import run_migration as _run_options_plays_migration
+from db.migrate_short_delta import run_migration as _run_short_delta_migration
 from intel.earnings_calendar import seed_from_payload, save_earnings_date, get_all_upcoming_dates
 from backtest.engine import (
     run_full_backtest,
@@ -105,6 +109,16 @@ try:
     print("✅ Watchlist migration complete")
 except Exception as _me:
     print(f"Watchlist migration warning: {_me}")
+try:
+    _run_options_plays_migration()
+    print("✅ Options plays migration complete")
+except Exception as _me:
+    print(f"Options plays migration warning: {_me}")
+try:
+    _run_short_delta_migration()
+    print("✅ Short delta migration complete")
+except Exception as _me:
+    print(f"Short delta migration warning: {_me}")
 
 # Load saved weights if available
 def _load_saved_weights():
@@ -716,6 +730,74 @@ def reset_weights():
 
 # ─── Options Play Builder ───
 
+# P2: Server-side Reality Check scorer (mirrors JS computeRC in dashboard)
+def _compute_rc(play: dict, ticker_data: dict) -> int:
+    """
+    Compute Reality Check score (0-100) for a generated play.
+    Higher = better quality. RC >= 70 → log for P&L tracking.
+    Mirrors the JS computeRC() logic from dashboard_embed.html.
+    """
+    score = 0
+    opt_score = ticker_data.get("opt_score", 0) or 0
+    lt_score = ticker_data.get("lt_score", 0) or 0
+    iv_rank = ticker_data.get("iv_rank") or 50
+    days_to_earnings = ticker_data.get("days_to_earnings")
+    rsi = ticker_data.get("rsi", 50) or 50
+    dte = play.get("dte", 30) or 30
+    strategy = (play.get("strategy") or "").lower()
+    direction = (play.get("direction") or "").lower()
+
+    # Core score quality (40 pts)
+    if opt_score >= 70:
+        score += 40
+    elif opt_score >= 55:
+        score += 28
+    elif opt_score >= 40:
+        score += 16
+
+    # LT alignment (15 pts)
+    if lt_score >= 65:
+        score += 15
+    elif lt_score >= 50:
+        score += 10
+
+    # IV context (20 pts)
+    if "debit" in strategy or "long" in strategy:
+        # Buying options: want low IV rank
+        if iv_rank < 30:
+            score += 20
+        elif iv_rank < 50:
+            score += 12
+        elif iv_rank > 70:
+            score -= 5  # expensive
+    else:
+        # Selling options: want high IV rank
+        if iv_rank > 60:
+            score += 20
+        elif iv_rank > 40:
+            score += 12
+
+    # Earnings catalyst alignment (15 pts)
+    if days_to_earnings is not None and 0 < days_to_earnings <= dte:
+        score += 15
+    elif days_to_earnings is not None and days_to_earnings <= dte * 1.5:
+        score += 8
+
+    # RSI + direction alignment (10 pts)
+    if "bull" in direction or "call" in strategy:
+        if 40 <= rsi <= 65:
+            score += 10
+        elif rsi < 30:
+            score += 8  # oversold rebound setup
+    elif "bear" in direction or "put" in strategy:
+        if 50 <= rsi <= 75:
+            score += 10
+        elif rsi > 75:
+            score += 8
+
+    return min(100, max(0, score))
+
+
 _plays_cache = {}
 _plays_status = {}
 
@@ -747,6 +829,32 @@ def _fetch_plays_background(ticker):
             perf_3m=data.get("perf_3m", 0),
         )
 
+        # P2: Score each play and log high-quality ones for P&L tracking
+        scored_plays = []
+        for play in plays:
+            rc = _compute_rc(play, data)
+            play["rc_score"] = rc
+            scored_plays.append(play)
+            if rc >= 70:
+                try:
+                    log_play(
+                        ticker=ticker,
+                        horizon=play.get("horizon", "medium"),
+                        strategy=play.get("strategy", ""),
+                        strike=play.get("strike"),
+                        expiry=play.get("expiry"),
+                        dte=play.get("dte", 30),
+                        entry_price=data["price"],
+                        entry_iv_rank=data.get("iv_rank"),
+                        lt_score=data.get("lt_score", 0),
+                        opt_score=data.get("opt_score", 0),
+                        rc_score=rc,
+                        direction=play.get("direction", "bullish"),
+                        notes=play.get("rationale", ""),
+                    )
+                except Exception:
+                    pass  # P&L logging is non-critical
+
         result = {
             "ticker": ticker, "price": data["price"],
             "rsi": data.get("rsi"), "iv_30d": data.get("iv_30d"),
@@ -755,7 +863,7 @@ def _fetch_plays_background(ticker):
             "beta": data.get("beta"), "perf_3m": data.get("perf_3m"),
             "bb_width": data.get("bb_width"), "vol_ratio": data.get("vol_ratio"),
             "pct_from_52w_high": data.get("pct_from_52w_high"),
-            "plays": plays, "play_count": len(plays),
+            "plays": scored_plays, "play_count": len(scored_plays),
             "timestamp": datetime.now().isoformat(),
         }
         _plays_cache[ticker] = {"data": result, "timestamp": datetime.now().isoformat()}
@@ -873,6 +981,31 @@ def get_plays_for_ticker(ticker: str):
     except Exception as e:
         return {"ticker": ticker, "plays": [], "error": str(e)}
 
+
+# ─── P2: Play P&L History Endpoints ───
+
+@app.get("/plays/history/all")
+def plays_history_all(limit: int = Query(50, ge=1, le=200)):
+    """Return all closed plays for the P&L review panel."""
+    return {
+        "plays": get_play_history(limit=limit),
+        "stats": get_play_stats(),
+    }
+
+
+@app.get("/plays/history/{ticker}")
+def plays_history_ticker(ticker: str, limit: int = Query(20, ge=1, le=100)):
+    """Return closed plays for a specific ticker."""
+    return {
+        "ticker": ticker.upper(),
+        "plays": get_play_history(ticker=ticker, limit=limit),
+    }
+
+
+@app.get("/plays/open/tracked")
+def plays_open_tracked():
+    """Return all currently open (tracked, awaiting expiry) plays."""
+    return {"plays": get_open_plays()}
 
 
 # ─── Timing Debug Endpoints ───

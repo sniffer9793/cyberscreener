@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from core.scanner import run_scan, ALL_TICKERS
-from db.models import init_db, save_scan, get_scan_count
+from db.models import init_db, save_scan, get_scan_count, get_open_plays, close_play, get_nearest_price
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +58,52 @@ def run_scheduled_scan():
         logger.error("❌ Scan failed — no results returned.")
 
 
+def _check_play_outcomes():
+    """
+    P2: Close expired plays and estimate P&L.
+    Runs once daily around market close (4 PM).
+    Uses stored price snapshots + ~4x ATM options leverage estimate.
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    open_plays = get_open_plays(days_old=180)
+    closed = 0
+    for play in open_plays:
+        expiry = play.get("expiry")
+        if not expiry:
+            continue
+        # Close plays whose expiry has passed
+        if expiry <= today:
+            ticker = play["ticker"]
+            entry_price = play.get("entry_price")
+            direction = play.get("direction", "bullish")
+            # Get the price nearest to expiry
+            outcome_price = get_nearest_price(ticker, expiry, window_days=5)
+            if outcome_price and entry_price and entry_price > 0:
+                pct_move = (outcome_price - entry_price) / entry_price * 100
+                dir_sign = 1 if direction == "bullish" else -1
+                # ATM options rough leverage: ~4x the underlying move
+                pnl_pct = round(pct_move * dir_sign * 4, 1)
+                close_play(
+                    play_id=play["id"],
+                    outcome_price=outcome_price,
+                    pnl_pct=pnl_pct,
+                    outcome_date=today,
+                )
+                closed += 1
+            else:
+                # No price data available — close as expired with null P&L
+                close_play(
+                    play_id=play["id"],
+                    outcome_price=None,
+                    pnl_pct=None,
+                    outcome_date=today,
+                )
+                closed += 1
+
+    if closed > 0:
+        logger.info(f"📊 Play outcome check: closed {closed} expired plays")
+
+
 def is_market_hours():
     """Check if we're in a reasonable window for scanning (weekday, not too early/late)."""
     now = datetime.now()
@@ -75,12 +121,25 @@ def daemon_loop(interval_seconds=3600):
     logger.info(f"Starting scheduler daemon (interval: {interval_seconds}s)")
     logger.info(f"Tracking {len(ALL_TICKERS)} tickers")
 
+    _last_outcome_check_day: str = ""
+
     while True:
         try:
             if is_market_hours():
                 run_scheduled_scan()
             else:
                 logger.info("Outside market hours, skipping scan.")
+
+            # P2: Nightly play outcome check at ~4 PM (market close)
+            now = datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+            if now.hour == 16 and _last_outcome_check_day != today_str:
+                try:
+                    _last_outcome_check_day = today_str
+                    _check_play_outcomes()
+                except Exception as oc_err:
+                    logger.error(f"Outcome check error: {oc_err}")
+
         except Exception as e:
             logger.error(f"Scan error: {e}")
 

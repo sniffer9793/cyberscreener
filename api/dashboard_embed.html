@@ -308,7 +308,7 @@ function ScoresTab({latest}){
     React.createElement("div",{style:{width:320,flexShrink:0,display:"flex",flexDirection:"column",gap:8}},
       React.createElement("div",{style:{display:"flex",gap:4}},["all","cyber","energy","defense"].map(s=>React.createElement("button",{key:s,onClick:()=>setFilter(s),style:{padding:"5px 12px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",background:filter===s?C.blue+"12":"transparent",border:"1px solid "+(filter===s?C.blue+"30":C.border),color:filter===s?C.blue:C.textSec,textTransform:"capitalize"}},s))),
       React.createElement(Card,{style:{padding:12,maxHeight:"65vh",overflowY:"auto"}},React.createElement("div",{style:{fontSize:11,color:C.textSec,fontWeight:600,textTransform:"uppercase",letterSpacing:".04em",padding:"4px 8px",marginBottom:4}},fl.length+" tickers"),
-        fl.map(r=>React.createElement("div",{key:r.ticker,onClick:()=>load(r.ticker),style:{display:"grid",gridTemplateColumns:"54px 1fr 44px 44px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:8,cursor:"pointer",background:sel===r.ticker?C.blueBg:"transparent",borderLeft:sel===r.ticker?"3px solid "+C.blue:"3px solid transparent"}},React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement("span",{style:{fontSize:11,color:C.textSec,fontFamily:mono}},"$"+r.price),React.createElement(Badge,{color:r.lt_score>=50?C.green:r.lt_score>=30?C.amber:C.textTri},r.lt_score),React.createElement(Badge,{color:r.opt_score>=40?C.green:r.opt_score>=25?C.amber:C.textTri},r.opt_score))))),
+        fl.map(r=>{const sd=r.short_delta;const sdEl=sd!=null&&Math.abs(sd)>=2?React.createElement("span",{title:"Short interest delta: "+(sd>0?"+":"")+sd+"pp (60d)",style:{fontSize:10,fontWeight:700,color:sd<-3?C.green:sd>3?C.red:C.textTri,lineHeight:1}},sd<-3?"↓SI":sd>3?"↑SI":"·"):null;return React.createElement("div",{key:r.ticker,onClick:()=>load(r.ticker),style:{display:"grid",gridTemplateColumns:"54px 1fr 44px 44px 22px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:8,cursor:"pointer",background:sel===r.ticker?C.blueBg:"transparent",borderLeft:sel===r.ticker?"3px solid "+C.blue:"3px solid transparent"}},React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement("span",{style:{fontSize:11,color:C.textSec,fontFamily:mono}},"$"+r.price),React.createElement(Badge,{color:r.lt_score>=50?C.green:r.lt_score>=30?C.amber:C.textTri},r.lt_score),React.createElement(Badge,{color:r.opt_score>=40?C.green:r.opt_score>=25?C.amber:C.textTri},r.opt_score),sdEl||React.createElement("span",null))}))),
     React.createElement("div",{style:{flex:1}},
       !sel?React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:32,marginBottom:12,opacity:.5}},"◆"),React.createElement("div",{style:{fontSize:15,fontWeight:600,marginBottom:8}},"Score Explorer"),React.createElement("div",{style:{fontSize:13,color:C.textSec,maxWidth:400,margin:"0 auto",lineHeight:1.6}},"Select a ticker to view score history, component breakdown, and layer status."))
       :!L?React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{className:"pulse",style:{fontSize:14,color:C.textSec}},"Loading "+sel+"..."))
@@ -318,6 +318,7 @@ function ScoresTab({latest}){
           React.createElement(LayerPill,{name:"SEC",icon:"📋",score:lr.sec_score}),
           React.createElement(LayerPill,{name:"Sent",icon:"💬",score:lr.sentiment_score}),
           React.createElement(LayerPill,{name:"Whale",icon:"🐋",score:lr.whale_score}),
+          lr.short_delta!=null&&Math.abs(lr.short_delta)>=2&&React.createElement("span",{title:"Short interest delta (60d): "+(lr.short_delta>0?"+":"")+lr.short_delta+"pp",style:{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:6,background:lr.short_delta<-3?C.greenBg:lr.short_delta>3?C.redBg:"#f5f5f5",color:lr.short_delta<-3?C.green:lr.short_delta>3?C.red:C.textSec,border:"1px solid "+(lr.short_delta<-3?C.green+"40":lr.short_delta>3?C.redBorder:"#e0e0e0")}},lr.short_delta<-3?"🔻 SI covering":"📈 SI building"),
           lr.outage_status==="outage"&&React.createElement("span",{style:{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:6,background:C.redBg,color:C.red,border:"1px solid "+C.redBorder}},"🔴 OUTAGE"),
           lr.outage_status==="degraded"&&React.createElement("span",{style:{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:6,background:"#fff8e1",color:C.amber,border:"1px solid #ffe082"}},"⚠ DEGRADED"),
           lr.breach_victim&&React.createElement("span",{style:{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:6,background:C.redBg,color:C.red,border:"1px solid "+C.redBorder}},"🚨 BREACH"),
@@ -344,6 +345,8 @@ function ScoresTab({latest}){
 // ─── Plays Tab ───
 function PlaysTab({latest,defaultTicker,tz}){
   const [sel,setSel]=useState(null),[data,setData]=useState(null),[msg,setMsg]=useState(""),[showW,setShowW]=useState(false);
+  const [showHist,setShowHist]=useState(false),[playHist,setPlayHist]=useState(null),[histLoading,setHistLoading]=useState(false);
+  async function loadHistory(){if(playHist)return;setHistLoading(true);const d=await api("/plays/history/all?limit=50");if(d){setPlayHist(d)}setHistLoading(false);}
   // Auto-load if a ticker was passed from Killer Plays
   useEffect(()=>{if(defaultTicker&&defaultTicker!==sel)loadPlays(defaultTicker)},[defaultTicker]);
   const [ow,setOw]=useState({earnings_catalyst:25,iv_context:20,directional:20,technical:15,liquidity:10,asymmetry:10});
@@ -362,8 +365,34 @@ function PlaysTab({latest,defaultTicker,tz}){
 
   let detail;
   if(!sel){
+    const stats=playHist?.stats,plays=playHist?.plays||[];
     detail=React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
       React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:32,marginBottom:12,opacity:.5}},"⚡"),React.createElement("div",{style:{fontSize:16,fontWeight:600,marginBottom:8}},"Options Play Builder"),React.createElement("div",{style:{fontSize:13,color:C.textSec,maxWidth:480,margin:"0 auto",lineHeight:1.7}},"Select a ticker to fetch live options chain and generate plays. Each includes a full scoring breakdown, reality check, and risk/reward analysis.")),
+      React.createElement(Card,{style:{padding:20,cursor:"pointer"},onClick:()=>{if(!showHist){loadHistory()}setShowHist(s=>!s)}},
+        React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showHist?14:0}},
+          React.createElement("h2",{style:{fontSize:15,fontWeight:700,margin:0}},"📈 Play History"),
+          React.createElement("span",{style:{fontSize:11,color:C.textSec}},showHist?"▲ hide":"▼ expand — P&L for tracked plays")),
+        showHist&&React.createElement("div",{onClick:e=>e.stopPropagation()},
+          histLoading&&React.createElement("div",{style:{fontSize:12,color:C.textSec,padding:"12px 0",textAlign:"center"}},"Loading play history..."),
+          !histLoading&&plays.length===0&&React.createElement("div",{style:{fontSize:12,color:C.textSec,padding:"8px 0"}},"No closed plays yet — P&L tracking begins when plays with RC ≥ 70 are generated and their options expire."),
+          !histLoading&&stats&&stats.total_closed>0&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}},
+            React.createElement(Metric,{label:"Closed Plays",value:stats.total_closed}),
+            React.createElement(Metric,{label:"Win Rate",value:stats.win_rate!=null?stats.win_rate+"%":"—",color:stats.win_rate>=55?C.green:stats.win_rate>=45?C.amber:C.red}),
+            React.createElement(Metric,{label:"Avg P&L",value:stats.avg_pnl!=null?(stats.avg_pnl>0?"+":"")+stats.avg_pnl+"%":"—",color:stats.avg_pnl>0?C.green:stats.avg_pnl<0?C.red:C.textSec}),
+            React.createElement(Metric,{label:"Best Play",value:stats.best_play?stats.best_play.ticker:"—",sub:stats.best_play&&stats.best_play.pnl_pct!=null?(stats.best_play.pnl_pct>0?"+":"")+stats.best_play.pnl_pct+"%":""})),
+          !histLoading&&plays.length>0&&React.createElement("div",{style:{overflowX:"auto"}},
+            React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:11}},
+              React.createElement("thead",null,React.createElement("tr",null,["Ticker","Strategy","Direction","Expiry","DTE","RC","Entry","P&L","Date"].map(h=>React.createElement("th",{key:h,style:{textAlign:"left",padding:"4px 8px",color:C.textSec,fontWeight:600,borderBottom:"1px solid "+C.border,whiteSpace:"nowrap"}},h)))),
+              React.createElement("tbody",null,plays.map((p,i)=>{const pnl=p.pnl_pct;const pnlColor=pnl==null?C.textTri:pnl>0?C.green:C.red;return React.createElement("tr",{key:i,style:{background:i%2===0?C.bg:"transparent"}},
+                React.createElement("td",{style:{padding:"5px 8px",fontWeight:700,fontFamily:mono}},p.ticker),
+                React.createElement("td",{style:{padding:"5px 8px",color:C.textSec}},p.strategy||"—"),
+                React.createElement("td",{style:{padding:"5px 8px"}},(p.direction||"").charAt(0).toUpperCase()+(p.direction||"").slice(1)),
+                React.createElement("td",{style:{padding:"5px 8px",fontFamily:mono}},fmtExpiry(p.expiry)),
+                React.createElement("td",{style:{padding:"5px 8px",color:C.textTri}},p.dte||"—"),
+                React.createElement("td",{style:{padding:"5px 8px",fontWeight:600,color:p.rc_score>=70?C.green:p.rc_score>=50?C.amber:C.textTri}},p.rc_score||"—"),
+                React.createElement("td",{style:{padding:"5px 8px",fontFamily:mono}},"$"+(p.entry_price||"—")),
+                React.createElement("td",{style:{padding:"5px 8px",fontWeight:700,fontFamily:mono,color:pnlColor}},pnl!=null?(pnl>0?"+":"")+pnl+"%":"—"),
+                React.createElement("td",{style:{padding:"5px 8px",color:C.textTri}},p.outcome_date||p.generated_at?.slice(0,10)||"—"))})))))),
       React.createElement(Card,{style:{padding:24}},React.createElement("h3",{style:{fontSize:14,fontWeight:700,marginBottom:12}},"How Options Scoring Works"),
         React.createElement("div",{style:{fontSize:12,color:C.textSec,lineHeight:1.7,marginBottom:12}},"The Options Score (0–100) has six weighted components. Each measures a different dimension of opportunity:"),
         React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},

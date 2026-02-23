@@ -53,6 +53,7 @@ def _migrate_scores_table(conn):
         ("perf_1m", "REAL"),
         ("lt_breakdown", "TEXT"),
         ("opt_breakdown", "TEXT"),
+        ("short_delta", "REAL"),  # P5: change in short interest over 60d
     ]
 
     for col_name, col_type in new_columns:
@@ -248,7 +249,8 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
                 recommended_expiry, recommended_dte,
                 timing_signals, timing_debug,
                 sector, subsector, scoring_profile,
-                threat_score, outage_status, breach_victim, demand_signal
+                threat_score, outage_status, breach_victim, demand_signal,
+                short_delta
             ) VALUES (
                 ?,?,?,?,
                 ?,?,
@@ -265,7 +267,8 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
                 ?,?,
                 ?,?,
                 ?,?,?,
-                ?,?,?,?
+                ?,?,?,?,
+                ?
             )
         """, (
             scan_id, r["ticker"], r.get("price"), r.get("market_cap_b"),
@@ -294,6 +297,7 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
             r.get("threat_score", 100), r.get("outage_status", "none"),
             1 if r.get("breach_victim") else 0,
             1 if r.get("demand_signal") else 0,
+            r.get("short_delta"),
         ))
 
         # Save price snapshot
@@ -466,3 +470,162 @@ def get_watchlist_tickers() -> list:
 
 # ── Backward-compatible aliases for old code (scheduler.py, db/__init__.py) ──
 get_price_on_date = get_nearest_price
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# P1: IV History — real 52-week IV range from stored scan data
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_iv_history(ticker: str, days: int = 365) -> list:
+    """
+    Return list of (scan_date, iv_30d) tuples for a ticker over the last N days.
+    Used to compute real IV rank (actual 52-week IV min/max).
+    """
+    conn = get_db()
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    rows = conn.execute("""
+        SELECT sc.timestamp as scan_date, s.iv_30d
+        FROM scores s
+        JOIN scans sc ON s.scan_id = sc.id
+        WHERE s.ticker = ? AND sc.timestamp >= ? AND s.iv_30d IS NOT NULL
+        ORDER BY sc.timestamp ASC
+    """, (ticker, cutoff)).fetchall()
+    conn.close()
+    return [(r["scan_date"], r["iv_30d"]) for r in rows]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# P5: Short Interest Trend — delta over last 60 days
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_short_interest_trend(ticker: str, days: int = 60) -> dict:
+    """
+    Return short interest trend for a ticker over the last N days.
+    Returns dict with: latest, oldest, delta, observation_count.
+    delta < 0 means shorts are covering (squeeze setup), delta > 0 means building.
+    """
+    conn = get_db()
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    rows = conn.execute("""
+        SELECT sc.timestamp as scan_date, s.short_pct
+        FROM scores s
+        JOIN scans sc ON s.scan_id = sc.id
+        WHERE s.ticker = ? AND sc.timestamp >= ? AND s.short_pct IS NOT NULL AND s.short_pct > 0
+        ORDER BY sc.timestamp ASC
+    """, (ticker, cutoff)).fetchall()
+    conn.close()
+
+    if len(rows) < 2:
+        return {"latest": None, "oldest": None, "delta": None, "n": len(rows)}
+
+    latest = rows[-1]["short_pct"]
+    oldest = rows[0]["short_pct"]
+    delta = round(latest - oldest, 2)  # positive = shorts building, negative = covering
+    return {"latest": latest, "oldest": oldest, "delta": delta, "n": len(rows)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# P2: Options Play P&L Tracking
+# ─────────────────────────────────────────────────────────────────────────────
+
+def log_play(ticker: str, horizon: str, strategy: str, strike: float,
+             expiry: str, dte: int, entry_price: float, entry_iv_rank: float,
+             lt_score: float, opt_score: float, rc_score: int,
+             direction: str = "bullish", notes: str = "") -> int:
+    """
+    Log a generated play to options_plays for P&L tracking.
+    Returns the new play ID.
+    """
+    conn = get_db()
+    cursor = conn.execute("""
+        INSERT INTO options_plays
+            (ticker, generated_at, horizon, strategy, strike, expiry, dte,
+             entry_price, entry_iv_rank, lt_score, opt_score, rc_score,
+             direction, status, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+    """, (
+        ticker, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        horizon, strategy, strike, expiry, dte,
+        entry_price, entry_iv_rank, lt_score, opt_score, rc_score,
+        direction, notes,
+    ))
+    play_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return play_id
+
+
+def get_open_plays(days_old: int = 90) -> list:
+    """Return all open (unexpired) plays generated within the last N days."""
+    conn = get_db()
+    cutoff = (datetime.now() - timedelta(days=days_old)).strftime("%Y-%m-%d")
+    rows = conn.execute("""
+        SELECT * FROM options_plays
+        WHERE status = 'open' AND generated_at >= ?
+        ORDER BY generated_at DESC
+    """, (cutoff,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def close_play(play_id: int, outcome_price: float, pnl_pct: float,
+               outcome_date: str = None) -> None:
+    """Mark a play as closed with P&L outcome."""
+    conn = get_db()
+    outcome_date = outcome_date or datetime.now().strftime("%Y-%m-%d")
+    conn.execute("""
+        UPDATE options_plays
+        SET status = 'closed', outcome_price = ?, outcome_date = ?, pnl_pct = ?
+        WHERE id = ?
+    """, (outcome_price, outcome_date, pnl_pct, play_id))
+    conn.commit()
+    conn.close()
+
+
+def get_play_history(ticker: str = None, limit: int = 50) -> list:
+    """
+    Return closed plays for P&L review.
+    Optionally filtered by ticker.
+    """
+    conn = get_db()
+    if ticker:
+        rows = conn.execute("""
+            SELECT * FROM options_plays
+            WHERE status = 'closed' AND ticker = ?
+            ORDER BY outcome_date DESC LIMIT ?
+        """, (ticker.upper(), limit)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT * FROM options_plays
+            WHERE status = 'closed'
+            ORDER BY outcome_date DESC LIMIT ?
+        """, (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_play_stats() -> dict:
+    """
+    Return aggregate P&L stats across all closed plays.
+    Returns: total_closed, win_rate, avg_pnl, best_play, worst_play
+    """
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT pnl_pct, ticker, expiry, strategy
+        FROM options_plays WHERE status = 'closed' AND pnl_pct IS NOT NULL
+    """).fetchall()
+    conn.close()
+
+    if not rows:
+        return {"total_closed": 0, "win_rate": None, "avg_pnl": None,
+                "best_play": None, "worst_play": None}
+
+    pnls = [r["pnl_pct"] for r in rows]
+    wins = [p for p in pnls if p > 0]
+    return {
+        "total_closed": len(pnls),
+        "win_rate": round(len(wins) / len(pnls) * 100, 1),
+        "avg_pnl": round(sum(pnls) / len(pnls), 1),
+        "best_play": dict(rows[pnls.index(max(pnls))]),
+        "worst_play": dict(rows[pnls.index(min(pnls))]),
+    }

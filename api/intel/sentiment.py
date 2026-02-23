@@ -2,10 +2,14 @@
 Sentiment Intel Layer v2
 
 Sources — all via yfinance (no external HTTP calls, Railway-safe):
-  1. Yahoo Finance news headlines (ticker.news) — last 7 days
+  1. Yahoo Finance news headlines (ticker.news) — last 7 days, scored via
+     FinBERT (HuggingFace Inference API) with keyword-bag fallback
   2. Analyst recommendation trend (upgrades/downgrades) — last 30 days
 
-Dropped: StockTwits and Reddit — both blocked by Railway egress proxy.
+P3 Enhancement: FinBERT via HuggingFace Inference API
+  - POST to https://api-inference.huggingface.co/models/ProsusAI/finbert
+  - Requires HF_API_TOKEN env var (optional — falls back to keyword-bag if absent/fails)
+  - MD5-keyed in-process cache avoids re-scoring identical text
 
 Returns:
   {
@@ -16,10 +20,73 @@ Returns:
   }
 """
 
+import os
 import logging
+import hashlib
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+# ── P3: FinBERT via HuggingFace Inference API ─────────────────────────────────
+
+_HF_API_TOKEN = os.environ.get("HF_API_TOKEN", "")
+_FINBERT_URL = "https://api-inference.huggingface.co/models/ProsusAI/finbert"
+_finbert_cache: dict = {}   # md5(text) → "positive"/"negative"/"neutral"
+_finbert_available: bool = True  # flipped False on repeated failures
+
+
+def _score_text_finbert(text: str) -> str:
+    """
+    Score a text snippet using FinBERT via HuggingFace Inference API.
+    Returns "bullish", "bearish", or "neutral".
+    Falls back to keyword-bag if API unavailable.
+    """
+    global _finbert_available
+    if not _finbert_available or not _HF_API_TOKEN:
+        return _score_text(text)
+
+    cache_key = hashlib.md5(text.encode()).hexdigest()
+    if cache_key in _finbert_cache:
+        return _finbert_cache[cache_key]
+
+    try:
+        import requests
+        headers = {"Authorization": f"Bearer {_HF_API_TOKEN}"}
+        resp = requests.post(
+            _FINBERT_URL,
+            headers=headers,
+            json={"inputs": text[:512]},  # FinBERT max input
+            timeout=8,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            # FinBERT returns [[{label, score}, ...]]
+            if data and isinstance(data, list) and isinstance(data[0], list):
+                labels = {item["label"].lower(): item["score"] for item in data[0]}
+                # Map FinBERT labels: positive → bullish, negative → bearish
+                pos = labels.get("positive", 0)
+                neg = labels.get("negative", 0)
+                neu = labels.get("neutral", 0)
+                best = max(pos, neg, neu)
+                if best == pos and pos > 0.5:
+                    result = "bullish"
+                elif best == neg and neg > 0.5:
+                    result = "bearish"
+                else:
+                    result = "neutral"
+                _finbert_cache[cache_key] = result
+                return result
+        elif resp.status_code == 503:
+            # Model loading — don't mark unavailable, just fall back this call
+            logger.debug("FinBERT model loading (503), using keyword fallback")
+            return _score_text(text)
+        else:
+            logger.debug(f"FinBERT API error {resp.status_code}, using keyword fallback")
+    except Exception as e:
+        logger.debug(f"FinBERT exception: {e}, disabling for session")
+        _finbert_available = False
+
+    return _score_text(text)  # keyword-bag fallback
 
 _BULLISH_KEYWORDS = {
     "beat", "beats", "surge", "surges", "rally", "rallies", "upgrade", "upgraded",
@@ -66,7 +133,7 @@ def _get_news_sentiment(ticker_obj, ticker_sym: str) -> dict:
             except Exception:
                 pass
             text = f"{item.get('title', '')} {item.get('summary', '')}"
-            label = _score_text(text)
+            label = _score_text_finbert(text)  # P3: FinBERT with keyword-bag fallback
             result[label] += 1
             result["total"] += 1
 

@@ -63,6 +63,14 @@ except ImportError:
     SENTIMENT_AVAILABLE = False
     logger.warning("Sentiment layer not available")
 
+# P1 + P5: DB access for IV history and short interest trend
+try:
+    from db.models import get_iv_history, get_short_interest_trend
+    DB_HISTORY_AVAILABLE = True
+except ImportError:
+    DB_HISTORY_AVAILABLE = False
+    logger.debug("DB history not available — using synthetic IV rank and skipping short delta")
+
 # ─────────────────────────────────────────────
 # TICKER UNIVERSE
 # ─────────────────────────────────────────────
@@ -224,6 +232,17 @@ def fetch_ticker_data(ticker):
             except Exception:
                 pass
 
+        # P4: Weekly timeframe alignment — fetch 2y weekly bars for SMA20 alignment
+        weekly_above_sma20 = None
+        try:
+            hist_wk = t.history(period="2y", interval="1wk")
+            if not hist_wk.empty and len(hist_wk) >= 20:
+                wk_close = hist_wk['Close']
+                weekly_sma20 = float(wk_close.rolling(20).mean().iloc[-1])
+                weekly_above_sma20 = float(wk_close.iloc[-1]) > weekly_sma20
+        except Exception:
+            pass
+
         # IV, IV Rank, and Whale Flow — all from a single options chain fetch
         iv_30d = None
         iv_rank = None
@@ -251,11 +270,26 @@ def fetch_ticker_data(ticker):
                     if not calls.empty and 'impliedVolatility' in calls.columns:
                         current_iv = float(calls['impliedVolatility'].median() * 100)
                         iv_30d = round(current_iv, 1)
-                        hist_vol = float(close.pct_change().rolling(20).std().iloc[-1] * np.sqrt(252) * 100)
-                        iv_52w_low = hist_vol * 0.6
-                        iv_52w_high = hist_vol * 1.8
-                        if iv_52w_high > iv_52w_low:
-                            iv_rank = round(min(100, max(0, (current_iv - iv_52w_low) / (iv_52w_high - iv_52w_low) * 100)), 1)
+                        # P1: Real IV rank from stored history (≥30 obs); fallback synthetic
+                        iv_rank = None
+                        if DB_HISTORY_AVAILABLE:
+                            try:
+                                iv_hist = get_iv_history(ticker, days=365)
+                                iv_vals = [v for _, v in iv_hist if v is not None]
+                                if len(iv_vals) >= 30:
+                                    iv_52w_low = min(iv_vals)
+                                    iv_52w_high = max(iv_vals)
+                                    if iv_52w_high > iv_52w_low:
+                                        iv_rank = round(min(100, max(0, (current_iv - iv_52w_low) / (iv_52w_high - iv_52w_low) * 100)), 1)
+                            except Exception:
+                                pass
+                        if iv_rank is None:
+                            # Fallback: synthetic range from realized volatility
+                            hist_vol = float(close.pct_change().rolling(20).std().iloc[-1] * np.sqrt(252) * 100)
+                            iv_52w_low = hist_vol * 0.6
+                            iv_52w_high = hist_vol * 1.8
+                            if iv_52w_high > iv_52w_low:
+                                iv_rank = round(min(100, max(0, (current_iv - iv_52w_low) / (iv_52w_high - iv_52w_low) * 100)), 1)
                 except Exception:
                     pass
 
@@ -275,6 +309,15 @@ def fetch_ticker_data(ticker):
         perf_3m = round(((price / price_3m_ago) - 1) * 100, 1) if price_3m_ago > 0 else 0
         perf_1m = round(((price / price_1m_ago) - 1) * 100, 1) if price_1m_ago > 0 else 0
         pct_from_high = round(((price / price_52w_high) - 1) * 100, 1)
+
+        # P5: Short interest delta — covering shorts = squeeze setup
+        short_delta = None
+        if DB_HISTORY_AVAILABLE:
+            try:
+                si_trend = get_short_interest_trend(ticker, days=60)
+                short_delta = si_trend.get("delta")  # negative = covering
+            except Exception:
+                pass
 
         return {
             "ticker": ticker,
@@ -311,6 +354,10 @@ def fetch_ticker_data(ticker):
             "price_above_sma20": price > sma_20,
             "price_above_sma50": price > sma_50 if sma_50 else None,
             "price_above_sma200": price > sma_200 if sma_200 else None,
+            # P4: Weekly timeframe alignment
+            "weekly_above_sma20": weekly_above_sma20,
+            # P5: Short interest delta
+            "short_delta": short_delta,
             # Whale flow
             "whale_score": whale_data.get("whale_score", 0),
             "whale_signals": whale_data.get("whale_signals", []),
@@ -826,6 +873,22 @@ def score_long_term(row, weights=None):
         else:
             discount_raw = 0.2
 
+    # P5: Short interest delta modifier
+    # Covering shorts (negative delta) = squeeze setup → boost score
+    # Shorts piling in (positive delta) = headwind → reduce score
+    short_delta = row.get("short_delta")
+    if short_delta is not None:
+        if short_delta < -5:
+            discount_raw = min(1.0, discount_raw + 0.20)
+            reasons.append(f"🔻 Shorts covering ({short_delta:+.1f}pp 60d) — squeeze setup")
+        elif short_delta < -2:
+            discount_raw = min(1.0, discount_raw + 0.10)
+        elif short_delta > 5:
+            discount_raw = max(0, discount_raw - 0.15)
+            reasons.append(f"📈 Shorts building ({short_delta:+.1f}pp 60d) — headwind")
+        elif short_delta > 2:
+            discount_raw = max(0, discount_raw - 0.07)
+
     raw = min(1.0, discount_raw)
 
     pts = _score_component(raw, w["discount_momentum"])
@@ -942,6 +1005,13 @@ def score_options(row, weights=None):
             bull_signals += 1
         else:
             bear_signals += 1
+
+    # P4: Weekly timeframe alignment confirms or contradicts daily bias
+    weekly_above = row.get("weekly_above_sma20")
+    if weekly_above is True:
+        bull_signals += 1
+    elif weekly_above is False:
+        bear_signals += 1
 
     total_conviction = max(bull_signals, bear_signals)
     direction = "bullish" if bull_signals > bear_signals else "bearish" if bear_signals > bull_signals else "neutral"
