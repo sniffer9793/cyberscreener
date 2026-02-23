@@ -238,7 +238,7 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
                 recommended_expiry, recommended_dte,
                 timing_signals, timing_debug,
                 sector, subsector, scoring_profile,
-                threat_score, outage_status
+                threat_score, outage_status, breach_victim, demand_signal
             ) VALUES (
                 ?,?,?,?,
                 ?,?,
@@ -255,7 +255,7 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
                 ?,?,
                 ?,?,
                 ?,?,?,
-                ?,?
+                ?,?,?,?
             )
         """, (
             scan_id, r["ticker"], r.get("price"), r.get("market_cap_b"),
@@ -282,6 +282,8 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
             json.dumps(r.get("timing_debug", {})),
             r.get("sector", "cyber"), r.get("subsector", ""), r.get("scoring_profile", "saas"),
             r.get("threat_score", 100), r.get("outage_status", "none"),
+            1 if r.get("breach_victim") else 0,
+            1 if r.get("demand_signal") else 0,
         ))
 
         # Save price snapshot

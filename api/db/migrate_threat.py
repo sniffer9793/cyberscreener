@@ -16,6 +16,12 @@ def run_migration():
     if "outage_status" not in existing:
         conn.execute("ALTER TABLE scores ADD COLUMN outage_status TEXT DEFAULT 'none'")
         added.append("outage_status")
+    if "breach_victim" not in existing:
+        conn.execute("ALTER TABLE scores ADD COLUMN breach_victim INTEGER DEFAULT 0")
+        added.append("breach_victim")
+    if "demand_signal" not in existing:
+        conn.execute("ALTER TABLE scores ADD COLUMN demand_signal INTEGER DEFAULT 0")
+        added.append("demand_signal")
     conn.commit()
     conn.close()
     if added:

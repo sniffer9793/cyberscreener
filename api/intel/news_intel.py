@@ -244,7 +244,9 @@ def score_ticker_threat_context(ticker: str, sector: str = "cyber") -> dict:
                 break  # one strike is enough
 
     # ── 3. Demand signal for unaffected cyber vendors ─────────────────────────
-    if sector == "cyber" and not breach_victim:
+    # Only apply if the company's OWN service is healthy — no point boosting
+    # a company that is itself experiencing an outage/degradation
+    if sector == "cyber" and not breach_victim and outage_status not in ("outage", "degraded"):
         if _news_cache["items"]:
             threat_articles = [
                 i for i in _news_cache["items"]
