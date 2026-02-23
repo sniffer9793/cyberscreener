@@ -246,7 +246,7 @@ function ScoresTab({latest}){
         lr&&React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},React.createElement(LayerPill,{name:"SEC",icon:"📋",score:lr.sec_score}),React.createElement(LayerPill,{name:"Sent",icon:"💬",score:lr.sentiment_score}),React.createElement(LayerPill,{name:"Whale",icon:"🐋",score:lr.whale_score})),
         lr&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}},React.createElement(BreakdownPanel,{items:ltBreakdown(lr),title:"LT Score Breakdown",accent:C.green}),React.createElement(BreakdownPanel,{items:optBreakdown(lr),title:"Opt Score Breakdown",accent:C.blue})),
         React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:4}},sel+" — Score History"),React.createElement(SvgAreaChart,{data:cd,lines:[{key:"lt_score",name:"LT Score",color:C.green},{key:"opt_score",name:"Opt Score",color:C.blue}],height:260})),
-        React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:12}},sel+" — Price & Signals"),React.createElement(SvgPriceChart,{ticker:sel}))));}
+        React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:12}},sel+" — Price & Signals"),React.createElement(SvgPriceChart,{ticker:sel})))));}
 
 // ─── Plays Tab ───
 function PlaysTab({latest}){
