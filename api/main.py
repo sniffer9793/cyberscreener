@@ -1353,10 +1353,37 @@ def intel_outages():
 def get_killer_plays(limit: int = Query(8, ge=1, le=15)):
     """
     Return the highest-conviction plays from the latest scan.
-    Criteria: opt_score >= 55, lt_score >= 40, no active outage/breach.
-    Sorted by combined score (opt*0.6 + lt*0.4).
+    Criteria: opt_score in top-40% of universe AND lt_score >= 35,
+    no active outage/breach. Sorted by combined score (opt*0.6 + lt*0.4).
+
+    Note: thresholds are relative — the top opt_score in the universe typically
+    sits between 45-60 depending on market conditions (earnings cycle, IV regime).
+    We use the 60th-percentile opt_score as a dynamic floor.
     """
     conn = get_db()
+
+    # Step 1: compute 60th-percentile opt_score from latest scan per ticker
+    pct_row = conn.execute("""
+        SELECT opt_score FROM (
+            SELECT s.opt_score
+            FROM scores s
+            INNER JOIN (
+                SELECT ticker, MAX(scan_id) AS max_scan_id FROM scores GROUP BY ticker
+            ) latest ON s.ticker = latest.ticker AND s.scan_id = latest.max_scan_id
+            ORDER BY s.opt_score DESC
+        )
+        LIMIT 1 OFFSET (
+            SELECT MAX(1, CAST(COUNT(*)*0.4 AS INTEGER))
+            FROM scores s2
+            INNER JOIN (
+                SELECT ticker, MAX(scan_id) AS max_scan_id FROM scores GROUP BY ticker
+            ) latest2 ON s2.ticker = latest2.ticker AND s2.scan_id = latest2.max_scan_id
+        )
+    """).fetchone()
+    # Use dynamic 60th-pct floor, but enforce absolute minimums to avoid noise
+    opt_floor = max(40.0, float(pct_row[0]) if pct_row else 40.0)
+    lt_floor = 35.0
+
     rows = conn.execute("""
         SELECT s.ticker, s.price, s.opt_score, s.lt_score, s.rsi, s.days_to_earnings,
                s.threat_score, s.outage_status, s.breach_victim, s.demand_signal,
@@ -1367,14 +1394,14 @@ def get_killer_plays(limit: int = Query(8, ge=1, le=15)):
             SELECT ticker, MAX(scan_id) AS max_scan_id
             FROM scores GROUP BY ticker
         ) latest ON s.ticker = latest.ticker AND s.scan_id = latest.max_scan_id
-        WHERE s.opt_score >= 55
-          AND s.lt_score >= 40
+        WHERE s.opt_score >= ?
+          AND s.lt_score >= ?
           AND (s.threat_score IS NULL OR s.threat_score >= 70)
           AND (s.outage_status IS NULL OR s.outage_status NOT IN ('outage'))
           AND (s.breach_victim IS NULL OR s.breach_victim = 0)
         ORDER BY (s.opt_score * 0.6 + s.lt_score * 0.4) DESC
         LIMIT ?
-    """, (limit,)).fetchall()
+    """, (opt_floor, lt_floor, limit)).fetchall()
     conn.close()
 
     results = []

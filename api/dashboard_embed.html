@@ -209,7 +209,7 @@ function KillerPlaysWidget({onSelectPlay}){
     React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}},
       React.createElement("div",null,
         React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:"0 0 2px"}},"⚡ Killer Plays"),
-        React.createElement("p",{style:{fontSize:11,color:C.textSec,margin:0}},"High-conviction: opt≥55 · lt≥40 · no active threats")),
+        React.createElement("p",{style:{fontSize:11,color:C.textSec,margin:0}},"Top 40% opt score · lt≥35 · no active threats")),
       React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center"}},
         alertSent&&React.createElement("span",{style:{fontSize:11,color:C.textSec}},alertMsg),
         React.createElement("button",{onClick:sendAlert,style:{padding:"6px 12px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",background:C.bg,color:C.textSec,border:"1px solid "+C.border}},"📧 Email Alert"))),

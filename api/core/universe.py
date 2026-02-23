@@ -22,7 +22,7 @@ ENERGY_UNIVERSE = {
     "Power Generation": ["GEV"],
     "Solar / Clean Energy": ["FSLR", "AES", "NEE"],
     "Data Center REITs": ["EQIX", "DLR", "AMT"],
-    "Uranium ETFs": ["URA", "URNM"],
+    # URA and URNM removed — ETFs have no options chains or fundamentals data in yfinance
 }
 
 DEFENSE_UNIVERSE = {
