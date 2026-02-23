@@ -29,6 +29,16 @@ const C={bg:"#f5f5f7",bgCard:"#ffffff",border:"#e5e5ea",green:"#34c759",greenBg:
 const mono="'JetBrains Mono',monospace";
 async function api(path,opts){try{const r=await fetch(path,opts);if(!r.ok)throw new Error(r.status);return await r.json()}catch(e){console.error("API "+path+":",e);return null}}
 
+// ─── Timezone utilities ───
+const TZ_KEY='augur_tz';
+const TZ_OPTIONS=[{label:'Auto',value:''},{label:'PT',value:'America/Los_Angeles'},{label:'MT',value:'America/Denver'},{label:'CT',value:'America/Chicago'},{label:'ET',value:'America/New_York'},{label:'UTC',value:'UTC'}];
+function _parseTS(ts){if(!ts)return null;const s=String(ts);const clean=s.includes('T')||s.endsWith('Z')?s:s.replace(' ','T')+'Z';const d=new Date(clean);return isNaN(d)?null:d;}
+function fmtTS(ts,tz,opts){const d=_parseTS(ts);if(!d)return'—';const tzVal=tz||Intl.DateTimeFormat().resolvedOptions().timeZone;try{return d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',...(opts||{}),timeZone:tzVal});}catch(e){return d.toLocaleString();}}
+function fmtTimeOnly(ts,tz){const d=_parseTS(ts);if(!d)return'—';const tzVal=tz||Intl.DateTimeFormat().resolvedOptions().timeZone;try{return d.toLocaleString('en-US',{hour:'numeric',minute:'2-digit',timeZone:tzVal});}catch(e){return d.toLocaleTimeString();}}
+function fmtDateOnly(ts,tz){const d=_parseTS(ts);if(!d)return'—';const tzVal=tz||Intl.DateTimeFormat().resolvedOptions().timeZone;try{return d.toLocaleString('en-US',{month:'short',day:'numeric',timeZone:tzVal});}catch(e){return d.toLocaleDateString();}}
+function fmtExpiry(dateStr){if(!dateStr)return'—';try{const d=new Date(dateStr+'T12:00:00Z');if(isNaN(d))return dateStr;return d.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'});}catch(e){return dateStr;}}
+function fmtCalRow(ts,tz){const d=_parseTS(ts);if(!d)return'—';const tzVal=tz||Intl.DateTimeFormat().resolvedOptions().timeZone;try{return d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:tzVal});}catch(e){return String(ts).slice(0,16);}}
+
 // ─── SVG Charts ───
 function SvgBarChart({data,dataKey,labelKey,height=220,colorFn}){
   const [tip,setTip]=useState(null);if(!data||!data.length)return null;
@@ -269,7 +279,7 @@ function MarketBar(){
 }
 
 // ─── Overview ───
-function OverviewTab({stats,latest,onSelectPlay}){
+function OverviewTab({stats,latest,onSelectPlay,tz}){
   if(!stats)return React.createElement("div",{style:{color:C.textSec,padding:40,textAlign:"center"}},"Loading...");
   const res=latest?.results||[],topLT=res.slice(0,10),topOpt=[...res].sort((a,b)=>b.opt_score-a.opt_score).slice(0,10),rsiData=[...res].sort((a,b)=>a.rsi-b.rsi);
   return React.createElement("div",{className:"fade-in",style:{display:"flex",flexDirection:"column",gap:20}},
@@ -277,7 +287,7 @@ function OverviewTab({stats,latest,onSelectPlay}){
       React.createElement("strong",null,"Augur")," scans ",React.createElement("strong",null,res.length+" tickers")," across cyber, energy, and defense every 2 hours. ",React.createElement("strong",null,"LT Score")," = fundamentals (Rule of 40, valuation, FCF, trend). ",React.createElement("strong",null,"Opt Score")," = options opportunity (earnings, IV, direction, technicals). Use the ",React.createElement("strong",null,"Watchlist")," to track custom tickers."),
     React.createElement(Card,{style:{padding:16}},React.createElement(MarketBar,null)),
     React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}},
-      React.createElement(Metric,{label:"Total Scans",value:stats.total_scans}),React.createElement(Metric,{label:"Universe",value:res.length+" tickers"}),React.createElement(Metric,{label:"Records",value:(stats.total_score_records||0).toLocaleString()}),React.createElement(Metric,{label:"Last Scan",value:stats.last_scan?new Date(stats.last_scan).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"—"})),
+      React.createElement(Metric,{label:"Total Scans",value:stats.total_scans}),React.createElement(Metric,{label:"Universe",value:res.length+" tickers"}),React.createElement(Metric,{label:"Records",value:(stats.total_score_records||0).toLocaleString()}),React.createElement(Metric,{label:"Last Scan",value:stats.last_scan?fmtTS(stats.last_scan,tz):"—"})),
     React.createElement(Card,{style:{padding:20}},React.createElement(KillerPlaysWidget,{onSelectPlay})),
     React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}},
       React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:14}},"Long-Term Leaders"),topLT.map((r,i)=>React.createElement("div",{key:r.ticker,style:{display:"grid",gridTemplateColumns:"20px 56px 1fr 60px",alignItems:"center",gap:8,padding:"5px 0"}},React.createElement("span",{style:{fontSize:11,color:C.textTri,fontWeight:600}},i+1),React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement(ScoreBar,{score:r.lt_score}),React.createElement("span",{style:{fontSize:12,color:C.textSec,textAlign:"right",fontFamily:mono}},"$"+r.price)))),
@@ -292,7 +302,7 @@ function ScoresTab({latest}){
   const [sel,setSel]=useState(null),[hist,setHist]=useState(null),[filter,setFilter]=useState("all"),[signals,setSignals]=useState(null),[showSig,setShowSig]=useState(false);
   const results=latest?.results||[];const load=useCallback(async t=>{setSel(t);setHist(null);setSignals(null);setShowSig(false);const d=await api("/scores/"+t+"?days=180");if(d)setHist(d)},[]);
   const lr=sel?results.find(r=>r.ticker===sel):null,L=hist?.history?.length?hist.history[hist.history.length-1]:null,F=hist?.history?.length?hist.history[0]:null;
-  const cd=hist?.history?.map(h=>{const ts=h.timestamp||"";const dt=ts.includes("T")?new Date(ts):new Date(ts.replace(" ","T"));const ds=isNaN(dt)?"—":dt.toLocaleDateString("en-US",{month:"short",day:"numeric"});return({date:ds,lt_score:h.lt_score,opt_score:h.opt_score,price:h.price,rsi:h.rsi})})||[];
+  const cd=hist?.history?.map(h=>{const ds=fmtDateOnly(h.timestamp);return({date:ds,lt_score:h.lt_score,opt_score:h.opt_score,price:h.price,rsi:h.rsi})})||[];
   const fl=filter==="all"?results:results.filter(r=>r.sector===filter);
   return React.createElement("div",{className:"fade-in",style:{display:"flex",gap:16,minHeight:"60vh"}},
     React.createElement("div",{style:{width:320,flexShrink:0,display:"flex",flexDirection:"column",gap:8}},
@@ -332,7 +342,7 @@ function ScoresTab({latest}){
         React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:12}},sel+" — Price & Signals"),React.createElement(SvgPriceChart,{ticker:sel})))));}
 
 // ─── Plays Tab ───
-function PlaysTab({latest,defaultTicker}){
+function PlaysTab({latest,defaultTicker,tz}){
   const [sel,setSel]=useState(null),[data,setData]=useState(null),[msg,setMsg]=useState(""),[showW,setShowW]=useState(false);
   // Auto-load if a ticker was passed from Killer Plays
   useEffect(()=>{if(defaultTicker&&defaultTicker!==sel)loadPlays(defaultTicker)},[defaultTicker]);
@@ -376,7 +386,7 @@ function PlaysTab({latest,defaultTicker}){
           "Opt score adjusted by "+(threatRow.threat_score-100)+"pts. ",
           React.createElement("strong",null,"Review Intel tab for details."))),
       React.createElement(Card,{style:{padding:20}},
-        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}},React.createElement("div",null,React.createElement("h2",{style:{fontSize:18,fontWeight:700}},p.ticker+" Options Intelligence"),React.createElement("p",{style:{fontSize:12,color:C.textSec}},playsRC.length+" play"+(playsRC.length!==1?"s":"")+" · sorted by reality check")),React.createElement("div",{style:{textAlign:"right"}},React.createElement("div",{style:{fontSize:26,fontWeight:700,fontFamily:mono}},"$"+p.price),React.createElement("div",{style:{fontSize:11,color:C.textSec}},new Date(p.timestamp).toLocaleTimeString()))),
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}},React.createElement("div",null,React.createElement("h2",{style:{fontSize:18,fontWeight:700}},p.ticker+" Options Intelligence"),React.createElement("p",{style:{fontSize:12,color:C.textSec}},playsRC.length+" play"+(playsRC.length!==1?"s":"")+" · sorted by reality check")),React.createElement("div",{style:{textAlign:"right"}},React.createElement("div",{style:{fontSize:26,fontWeight:700,fontFamily:mono}},"$"+p.price),React.createElement("div",{style:{fontSize:11,color:C.textSec}},fmtTimeOnly(p.timestamp,tz)))),
         React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(100px,1fr))",gap:10,marginTop:14}},
           React.createElement(Metric,{label:"RSI",value:p.rsi!=null?Math.round(p.rsi):"—",color:p.rsi!=null?(p.rsi<30?C.green:p.rsi>70?C.red:C.amber):C.textSec,sub:p.rsi!=null?(p.rsi<30?"Oversold":p.rsi>70?"Overbought":"Neutral"):""}),
           React.createElement(Metric,{label:"IV 30d",value:p.iv_30d!=null?p.iv_30d+"%":"—",color:p.iv_30d!=null?(p.iv_30d>50?C.red:p.iv_30d>30?C.amber:C.green):C.textSec}),
@@ -387,7 +397,7 @@ function PlaysTab({latest,defaultTicker}){
         return React.createElement(Card,{key:i,style:{borderLeft:"3px solid "+dC,padding:0,overflow:"hidden"}},
           React.createElement("div",{style:{padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,borderBottom:"1px solid "+C.border}},
             React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10}},React.createElement("span",{style:{fontSize:20}},pl.emoji),React.createElement("div",null,React.createElement("div",{style:{fontSize:15,fontWeight:700}},pl.strategy),React.createElement(Badge,{color:dC,variant:"pill"},pl.direction))),
-            React.createElement("div",{style:{textAlign:"right"}},React.createElement("div",{style:{fontSize:14,fontWeight:700,fontFamily:mono}},pl.action),React.createElement("div",{style:{fontSize:11,color:C.textSec}},"Exp: "+pl.expiry+" ("+pl.dte+"d)"))),
+            React.createElement("div",{style:{textAlign:"right"}},React.createElement("div",{style:{fontSize:14,fontWeight:700,fontFamily:mono}},pl.action),React.createElement("div",{style:{fontSize:11,color:C.textSec}},"Exp: "+fmtExpiry(pl.expiry)+" ("+pl.dte+"d)"))),
           React.createElement("div",{style:{padding:"12px 20px",background:rc.gradeColor+"08",borderBottom:"1px solid "+rc.gradeColor+"20",display:"flex",alignItems:"center",gap:12}},
             React.createElement("div",{style:{width:40,height:40,borderRadius:10,background:rc.gradeColor+"15",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:mono,fontSize:16,fontWeight:800,color:rc.gradeColor}},rc.score),
             React.createElement("div",null,React.createElement("div",{style:{fontSize:12,fontWeight:700,color:rc.gradeColor}},rc.grade),React.createElement("div",{style:{fontSize:10,color:C.textSec}},"Reality Check · R/R "+rc.rr+":1"))),
@@ -417,9 +427,10 @@ function PlaysTab({latest,defaultTicker}){
     React.createElement("div",{style:{flex:1}},detail));}
 
 // ─── Backtest ───
-function BacktestTab({backtest:init}){
+function BacktestTab({backtest:init,tz}){
   const [period,setPeriod]=useState(30),[data,setData]=useState(init),[loading,setLoading]=useState(false);
   const [wtHist,setWtHist]=useState(null),[calRunning,setCalRunning]=useState(false),[calMsg,setCalMsg]=useState("");
+  const [inverseOpen,setInverseOpen]=useState(false),[inversePlays,setInversePlays]=useState(null),[invLoading,setInvLoading]=useState(false);
   const loadBT=useCallback(async fwd=>{setLoading(true);const d=await api("/backtest?days=180&forward_period="+fwd);if(d)setData(d);setLoading(false)},[]);
   const loadWH=useCallback(async()=>{const d=await api("/weights/history?limit=30");if(d)setWtHist(d)},[]);
   useEffect(()=>{if(!data)loadBT(period);loadWH()},[]);
@@ -491,6 +502,41 @@ function BacktestTab({backtest:init}){
           React.createElement("div",{style:{fontSize:10,color:C.textSec,marginTop:2}},d.name+" · n="+d.count),
           React.createElement("div",{style:{fontSize:10,color:C.textTri}},(d.winRate||0).toFixed(0)+"% winners"))))),
 
+    // ── Inverse Plan banner + section ──
+    ltCorr!=null&&React.createElement("div",null,
+      React.createElement(Card,{style:{padding:16,background:ltCorr<-0.05?"#fffbeb":"#f0fdf4",border:"1px solid "+(ltCorr<-0.05?"#fcd34d":C.greenBorder)}},
+        React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}},
+          React.createElement("div",null,
+            ltCorr<-0.05
+              ?React.createElement("div",null,React.createElement("span",{style:{fontSize:14,fontWeight:700,color:"#92400e"}},"⚠️ Model Inversion Detected  "),React.createElement("span",{style:{fontSize:12,color:"#78350f"}},"LT correlation is "+ltCorr.toFixed(3)+" — high-scored tickers are historically underperforming. The model's picks are anti-predictive."))
+              :React.createElement("div",null,React.createElement("span",{style:{fontSize:14,fontWeight:700,color:C.green}},"✓ Model is Normally Correlated  "),React.createElement("span",{style:{fontSize:12,color:C.textSec}},"LT correlation: "+ltCorr.toFixed(3)+". Inverse mode is available as a research tool even when the model is working."))),
+          React.createElement("button",{
+            onClick:async()=>{
+              const opening=!inverseOpen;
+              setInverseOpen(opening);
+              if(opening&&!inversePlays){setInvLoading(true);const d=await api("/inverse-plays?limit=8");setInversePlays(d);setInvLoading(false)}},
+            style:{padding:"8px 16px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",background:ltCorr<-0.05?"#fef3c7":"#f0fdf4",color:ltCorr<-0.05?"#92400e":C.green,border:"1px solid "+(ltCorr<-0.05?"#fcd34d":C.greenBorder)}},
+            inverseOpen?"▲ Hide Anti-Augur":"🔄 Inverse the Plan"))),
+      inverseOpen&&React.createElement(Card,{style:{padding:20,marginTop:12,border:"2px dashed "+(ltCorr<-0.05?"#fcd34d":"#bbf7d0")}},
+        React.createElement("div",{style:{marginBottom:14}},
+          React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:"0 0 4px",color:ltCorr<-0.05?"#92400e":C.text}},"🃏 Anti-Augur: Contrarian Plays"),
+          React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:"0 0 10px",lineHeight:1.6}},
+            "These are the tickers Augur scores ",React.createElement("em",null,"lowest")," in the current universe. ",
+            ltCorr<-0.05?"When the model is inverted, these low-confidence tickers have historically been the actual outperformers. The existential test: ":"Shown as a research overlay. If the model ever inverts, these become the preferred basket. ",
+            inversePlays?.q1_avg_return!=null&&React.createElement("strong",{style:{color:ltCorr<-0.05?C.green:C.textSec}}," Q1 (lowest-scored) avg return: "+(inversePlays.q1_avg_return>=0?"+":"")+inversePlays.q1_avg_return.toFixed(1)+"% · Win rate: "+(inversePlays.q1_win_rate||0).toFixed(0)+"%.")),
+          inversePlays?.is_inverted&&React.createElement("div",{style:{padding:"8px 12px",background:"#fef3c7",borderRadius:8,border:"1px solid #fcd34d",fontSize:12,color:"#92400e",marginBottom:10}},inversePlays.interpretation)),
+        invLoading&&React.createElement("div",{style:{color:C.textSec,fontSize:12,padding:"12px 0"}},"Loading contrarian plays…"),
+        !invLoading&&inversePlays&&inversePlays.plays&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}},
+          inversePlays.plays.map(p=>React.createElement("div",{key:p.ticker,style:{padding:"12px 14px",background:C.bg,borderRadius:10,border:"1px solid "+C.border}},
+            React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
+              React.createElement("span",{style:{fontSize:14,fontWeight:800,fontFamily:mono}},p.ticker),
+              React.createElement("span",{style:{fontSize:11,color:C.textSec}},"$"+(p.price||"—"))),
+            React.createElement("div",{style:{display:"flex",gap:8,marginBottom:6}},
+              React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:9,color:C.textTri,marginBottom:2}},"LT"),React.createElement("div",{style:{fontSize:12,fontWeight:700,fontFamily:mono,color:C.red}},(p.lt_score||0).toFixed(0))),
+              React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:9,color:C.textTri,marginBottom:2}},"OPT"),React.createElement("div",{style:{fontSize:12,fontWeight:700,fontFamily:mono,color:C.amber}},(p.opt_score||0).toFixed(0))),
+              React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:9,color:C.textTri,marginBottom:2}},"COMBINED"),React.createElement("div",{style:{fontSize:12,fontWeight:700,fontFamily:mono}},(p.combined_score||0).toFixed(0)))),
+            React.createElement("div",{style:{fontSize:10,color:C.textSec,lineHeight:1.4}},p.inverse_reason||"Low conviction score")))))),
+
     // ── Layer alpha ──
     lc.length>0&&React.createElement(Card,{style:{padding:20}},
       React.createElement("div",{style:{marginBottom:14}},
@@ -541,7 +587,7 @@ function BacktestTab({backtest:init}){
               const prev=ltHist[i+1];
               const w=row.weights||{},pw=prev?.weights||{};
               return React.createElement("tr",{key:row.id,style:{borderBottom:"1px solid "+C.border,background:i%2===0?C.bg:"transparent"}},
-                React.createElement("td",{style:{padding:"6px 8px",color:C.textSec,whiteSpace:"nowrap"}},row.timestamp?.slice(0,16)||"—"),
+                React.createElement("td",{style:{padding:"6px 8px",color:C.textSec,whiteSpace:"nowrap"}},fmtCalRow(row.timestamp,tz)),
                 React.createElement("td",{style:{padding:"6px 8px",textAlign:"right",fontFamily:mono,color:row.backtest_correlation!=null?(row.backtest_correlation>0.1?C.green:row.backtest_correlation<0?C.red:C.amber):C.textSec}},row.backtest_correlation!=null?row.backtest_correlation.toFixed(3):"—"),
                 React.createElement("td",{style:{padding:"6px 8px",textAlign:"right",fontFamily:mono,color:row.backtest_quintile_spread!=null?(row.backtest_quintile_spread>2?C.green:C.amber):C.textSec}},row.backtest_quintile_spread!=null?row.backtest_quintile_spread.toFixed(1)+"%":"—"),
                 ltKeys.map(k=>{
@@ -617,7 +663,7 @@ function WatchlistTab(){
     ));}
 
 // ─── Intel Tab ───
-function IntelTab(){
+function IntelTab({tz}){
   const [news,setNews]=useState(null);
   const [outages,setOutages]=useState(null);
   const [newsLoading,setNewsLoading]=useState(true);
@@ -641,7 +687,7 @@ function IntelTab(){
       React.createElement(Card,{style:{padding:20}},
         React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}},
           React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:0}},"🛡 Cyber Threat Feed"),
-          news&&React.createElement("span",{style:{fontSize:11,color:C.textSec}},new Date(news.fetched_at).toLocaleTimeString())),
+          news&&React.createElement("span",{style:{fontSize:11,color:C.textSec}},fmtTimeOnly(news.fetched_at,tz))),
         newsLoading&&React.createElement("div",{style:{color:C.textSec,fontSize:13,padding:"20px 0",textAlign:"center"}},"Fetching feeds..."),
         !newsLoading&&(!news||!news.items||news.items.length===0)&&React.createElement("div",{style:{color:C.textSec,fontSize:13,textAlign:"center",padding:"20px 0"}},"No articles fetched. Check RSS sources."),
         !newsLoading&&news&&news.items&&news.items.map((item,i)=>React.createElement("div",{key:i,style:{borderTop:i>0?"1px solid "+C.border:"none",paddingTop:i>0?12:0,marginTop:i>0?4:0}},
@@ -669,6 +715,8 @@ function IntelTab(){
 // ─── App Shell ───
 function App(){
   const [tab,setTab]=useState("overview"),[stats,setStats]=useState(null),[latest,setLatest]=useState(null),[backtest,setBacktest]=useState(null),[scanStatus,setScanStatus]=useState(null),[online,setOnline]=useState(null),[playTicker,setPlayTicker]=useState(null);
+  const [tz,setTz]=useState(()=>localStorage.getItem(TZ_KEY)||'');
+  const saveTz=v=>{setTz(v);localStorage.setItem(TZ_KEY,v)};
   useEffect(()=>{(async()=>{const s=await api("/stats");if(s){setStats(s);setOnline(true)}else setOnline(false);const l=await api("/scores/latest?limit=75");if(l)setLatest(l);api("/backtest?days=180&forward_period=30").then(b=>{if(b)setBacktest(b)})})()},[]);
   // Navigate to Plays tab and auto-load a ticker (from Killer Plays widget)
   const onSelectPlay=useCallback(ticker=>{setPlayTicker(ticker);setTab("plays")},[]);
@@ -681,6 +729,7 @@ function App(){
         React.createElement("div",null,React.createElement("h1",{style:{fontSize:18,fontWeight:800,margin:0,letterSpacing:"-.02em"}},"Augur"),React.createElement("span",{style:{fontSize:10,color:C.textSec,letterSpacing:".06em",textTransform:"uppercase",fontWeight:600}},"Multi-Sector Investment Oracle"))),
       React.createElement("div",{style:{display:"flex",alignItems:"center",gap:12}},
         React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},React.createElement("div",{style:{width:7,height:7,borderRadius:"50%",background:online===true?C.green:online===false?C.red:C.amber,boxShadow:online===true?"0 0 6px "+C.green+"60":"none"}}),React.createElement("span",{style:{fontSize:11,color:C.textSec,fontWeight:500}},online===true?"Online":online===false?"Offline":"...")),
+        React.createElement("select",{value:tz,onChange:e=>saveTz(e.target.value),title:"Timezone",style:{fontSize:11,borderRadius:7,border:"1px solid "+C.border,padding:"5px 8px",background:C.bgCard,color:C.textSec,cursor:"pointer",fontFamily:mono}},TZ_OPTIONS.map(o=>React.createElement("option",{key:o.value,value:o.value},o.label))),
         React.createElement("button",{onClick:triggerScan,disabled:scanStatus==="running",style:{padding:"8px 18px",borderRadius:10,border:"1px solid "+(scanStatus==="running"?C.border:C.blue+"40"),background:scanStatus==="running"?"#f9f9f9":C.blueBg,color:scanStatus==="running"?C.textSec:C.blue,fontSize:12,fontWeight:600,cursor:scanStatus==="running"?"wait":"pointer",boxShadow:C.shadow}},scanStatus==="running"?"Scanning...":scanStatus==="done"?"✓ Done":"Run Scan"))),
     online===false&&React.createElement("div",{style:{padding:"10px 28px",background:C.redBg,borderBottom:"1px solid "+C.redBorder,fontSize:12,color:C.red,fontWeight:500}},"API not reachable. Check server."),
     React.createElement("nav",{style:{padding:"8px 28px",display:"flex",gap:4,background:C.bg,flexWrap:"wrap"}},
@@ -691,12 +740,12 @@ function App(){
       React.createElement(TB,{active:tab==="watchlist",onClick:()=>setTab("watchlist"),icon:"📌"},"Watchlist"),
       React.createElement(TB,{active:tab==="intel",onClick:()=>setTab("intel"),icon:"🛡"},"Intel")),
     React.createElement("main",{style:{padding:"20px 28px",maxWidth:1360,margin:"0 auto"}},
-      tab==="overview"&&React.createElement(OverviewTab,{stats,latest,onSelectPlay}),
+      tab==="overview"&&React.createElement(OverviewTab,{stats,latest,onSelectPlay,tz}),
       tab==="scores"&&React.createElement(ScoresTab,{latest}),
-      tab==="plays"&&React.createElement(PlaysTab,{latest,defaultTicker:playTicker}),
-      tab==="backtest"&&React.createElement(BacktestTab,{backtest}),
+      tab==="plays"&&React.createElement(PlaysTab,{latest,defaultTicker:playTicker,tz}),
+      tab==="backtest"&&React.createElement(BacktestTab,{backtest,tz}),
       tab==="watchlist"&&React.createElement(WatchlistTab,null),
-      tab==="intel"&&React.createElement(IntelTab,null)),
+      tab==="intel"&&React.createElement(IntelTab,{tz})),
     React.createElement("footer",{style:{padding:"16px 28px",borderTop:"1px solid "+C.border,textAlign:"center"}},React.createElement("span",{style:{fontSize:10,color:C.textTri,fontWeight:500}},"Augur v3.1 — For research purposes only. Not financial advice.")));}
 ReactDOM.render(React.createElement(App),document.getElementById("root"));
 </script>

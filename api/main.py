@@ -1434,6 +1434,84 @@ def get_killer_plays(limit: int = Query(8, ge=1, le=15)):
     return {
         "plays": results,
         "total": len(results),
+        "threshold_used": opt_floor,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+# ── Inverse Plays — Contrarian strategy when model is anti-correlated ─────────
+
+@app.get("/inverse-plays")
+def get_inverse_plays(limit: int = Query(8, ge=1, le=15)):
+    """
+    Contrarian / Anti-Augur strategy: return the LOWEST-scored tickers from the
+    latest scan.  Useful when the backtest shows a negative LT correlation —
+    meaning Augur's high-confidence picks have historically underperformed and
+    the contrarian (low-score) basket has outperformed.
+
+    Also returns the current LT backtest correlation and Q1 quintile performance
+    so the caller can display the "existential test" — i.e. how well Q1 would
+    have done historically.
+    """
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT s.ticker, s.price, s.opt_score, s.lt_score, s.rsi,
+               s.days_to_earnings, s.threat_score, s.outage_status,
+               s.breach_victim, s.demand_signal, s.sector
+        FROM scores s
+        INNER JOIN (
+            SELECT ticker, MAX(scan_id) AS max_scan_id FROM scores GROUP BY ticker
+        ) latest ON s.ticker = latest.ticker AND s.scan_id = latest.max_scan_id
+        WHERE s.lt_score IS NOT NULL AND s.opt_score IS NOT NULL
+        ORDER BY (s.opt_score * 0.6 + s.lt_score * 0.4) ASC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+
+    results = []
+    for r in rows:
+        row = dict(r)
+        row["combined_score"] = round((row.get("opt_score") or 0) * 0.6 + (row.get("lt_score") or 0) * 0.4, 1)
+        dte = row.get("days_to_earnings")
+        rsi = row.get("rsi") or 50
+        row["inverse_reason"] = (
+            "Earnings catalyst upcoming" if dte and 5 <= dte <= 30
+            else "Technically oversold" if rsi < 35
+            else "Lowest conviction in universe"
+        )
+        results.append(row)
+
+    # Attach backtest context — how predictive is the current model?
+    lt_corr = None
+    q1_return = None
+    q1_win_rate = None
+    is_inverted = False
+    try:
+        from backtest.engine import backtest_score_vs_returns
+        bt = backtest_score_vs_returns(days=180, forward_period=30)
+        lt_a = bt.get("lt_analysis", {})
+        lt_corr = lt_a.get("correlation")
+        is_inverted = lt_corr is not None and lt_corr < -0.05
+        q1 = (lt_a.get("quintiles") or {}).get("Q1", {})
+        q1_return = q1.get("avg_return")
+        q1_win_rate = q1.get("win_rate")
+    except Exception:
+        pass
+
+    return {
+        "plays": results,
+        "total": len(results),
+        "strategy": "contrarian",
+        # Backtest context for the "existential test" display
+        "lt_correlation": lt_corr,
+        "is_inverted": is_inverted,
+        "q1_avg_return": q1_return,
+        "q1_win_rate": q1_win_rate,
+        "interpretation": (
+            "⚠️ Model is inversely correlated — these low-score tickers historically outperformed."
+            if is_inverted
+            else "Model is not currently inverted. Contrarian mode is precautionary."
+        ),
         "timestamp": datetime.now().isoformat(),
     }
 
