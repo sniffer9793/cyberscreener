@@ -1074,15 +1074,27 @@ def market_indices():
         try:
             t = yf.Ticker(symbol)
             fi = t.fast_info
-            price      = float(fi.get("last_price") or fi.get("regularMarketPrice") or 0)
-            prev_close = float(fi.get("previous_close") or fi.get("regularMarketPreviousClose") or price)
-            change_pct = ((price - prev_close) / prev_close * 100) if prev_close else 0.0
+            # fast_info is a FastInfo object — use getattr, not .get()
+            price = (getattr(fi, "last_price", None) or
+                     getattr(fi, "regular_market_price", None))
+            prev_close = (getattr(fi, "previous_close", None) or
+                          getattr(fi, "regular_market_previous_close", None))
+            if price is None:
+                # Fallback: last row of 2-day history
+                hist = t.history(period="2d")
+                if not hist.empty:
+                    price = float(hist["Close"].iloc[-1])
+                    if len(hist) >= 2:
+                        prev_close = float(hist["Close"].iloc[-2])
+            price      = float(price) if price is not None else None
+            prev_close = float(prev_close) if prev_close is not None else price
+            change_pct = ((price - prev_close) / prev_close * 100) if (price and prev_close) else 0.0
             results.append({
                 "symbol":     symbol,
                 "name":       name,
                 "flag":       flag,
                 "exchange":   exchange,
-                "price":      round(price, 2),
+                "price":      round(price, 2) if price is not None else None,
                 "change_pct": round(change_pct, 2),
                 "is_open":    _exchange_is_open(exchange),
             })
