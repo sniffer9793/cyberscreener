@@ -20,6 +20,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from db.models import get_db, get_all_scores_for_backtest, get_nearest_price, save_score_weights, get_latest_weights
 
 
+def _to_native(obj):
+    """Recursively convert NumPy types to native Python types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: _to_native(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_to_native(v) for v in obj]
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
+
+
 def _get_forward_return(ticker, score_date_str, forward_days):
     """
     Calculate forward return for a ticker from a specific date.
@@ -84,7 +101,7 @@ def backtest_score_vs_returns(days=180, forward_period=30):
         "lookback_days": days,
         "timestamp": datetime.now().isoformat(),
     }
-    return result
+    return _to_native(result)
 
 
 def _quintile_analysis(days, forward_period, score_field):
@@ -258,7 +275,7 @@ def backtest_layer_attribution(days=180, forward_period=30):
             if not np.isnan(corr):
                 indicator_correlations[ind] = round(corr, 3)
 
-    return {
+    return _to_native({
         "status": "ok",
         "forward_period_days": forward_period,
         "lookback_days": days,
@@ -267,7 +284,7 @@ def backtest_layer_attribution(days=180, forward_period=30):
         "raw_indicator_correlations": indicator_correlations,
         "data_points": len(pairs),
         "timestamp": datetime.now().isoformat(),
-    }
+    })
 
 
 def backtest_earnings_timing(days=180):
@@ -313,7 +330,7 @@ def backtest_earnings_timing(days=180):
 
         return result
 
-    return {
+    return _to_native({
         "status": "ok",
         "lookback_days": days,
         "forward_14d": _analyze_by_earnings_window(pairs_14d, "14d"),
@@ -321,12 +338,12 @@ def backtest_earnings_timing(days=180):
         "data_points_14d": len(pairs_14d),
         "data_points_30d": len(pairs_30d),
         "timestamp": datetime.now().isoformat(),
-    }
+    })
 
 
 def run_full_backtest(days=180, forward_period=30):
     """Run all three backtest analyses and return combined results."""
-    return {
+    return _to_native({
         "score_vs_returns": backtest_score_vs_returns(days, forward_period),
         "layer_attribution": backtest_layer_attribution(days, forward_period),
         "earnings_timing": backtest_earnings_timing(days),
@@ -335,7 +352,7 @@ def run_full_backtest(days=180, forward_period=30):
             "forward_period": forward_period,
             "timestamp": datetime.now().isoformat(),
         }
-    }
+    })
 
 
 # ─────────────────────────────────────────────
