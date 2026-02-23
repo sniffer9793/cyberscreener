@@ -6,7 +6,7 @@ CYBER_UNIVERSE = {
     "Platform Giants": ["CRWD", "PANW", "FTNT", "ZS", "CSCO"],
     "Identity & Access": ["OKTA", "CYBR", "SAIL"],
     "Cloud & Network Security": ["NET", "AKAM", "CHKP", "QLYS", "TENB", "RPD", "FFIV"],
-    "AI-Powered / Next-Gen": ["S", "DDOG", "MSFT", "GOOGL", "AVBO"],
+    "AI-Powered / Next-Gen": ["S", "DDOG", "MSFT", "GOOGL"],
     "Endpoint Detection": ["GEN"],
     "Threat Intel / IR": ["OTEX", "RDWR"],
     "Enterprise GRC": ["IBM"],
@@ -14,7 +14,7 @@ CYBER_UNIVERSE = {
     "Data Security": ["VRNS", "VRNT"],
     "Gov / Defense Cyber": ["CACI", "LDOS", "SAIC", "BAH", "BBAI", "PLTR"],
     "Mid/Small Cap": ["TLS", "OSPN", "JAMF", "DT", "ESTC", "RBBN"],
-    "ETF Benchmarks": ["CIBR", "HACK", "BUG"],
+    "ETF Benchmarks": ["HACK"],  # CIBR and BUG removed — no fundamentals/options data in yfinance
 }
 
 ENERGY_UNIVERSE = {

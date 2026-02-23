@@ -18,6 +18,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core.scanner import run_scan, ALL_TICKERS
 from db.models import init_db, save_scan, get_scan_count, get_open_plays, close_play, get_nearest_price
+try:
+    from intel.notifier import notify_momentum_digest
+    NOTIFIER_AVAILABLE = True
+except ImportError:
+    NOTIFIER_AVAILABLE = False
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,13 +52,20 @@ def run_scheduled_scan():
     duration = time.time() - start
 
     if results:
-        scan_id = save_scan(
+        scan_id, momentum_events = save_scan(
             results,
             intel_layers=["sec", "sentiment", "whale"],
             duration_seconds=duration,
         )
         logger.info(f"✅ Scan #{scan_id} complete: {len(results)} tickers in {duration:.1f}s "
                      f"(total scans in DB: {get_scan_count()})")
+        if momentum_events:
+            logger.info(f"🔥 {len(momentum_events)} momentum event(s) detected")
+            if NOTIFIER_AVAILABLE:
+                try:
+                    notify_momentum_digest(momentum_events)
+                except Exception as ne:
+                    logger.warning(f"Momentum notification failed: {ne}")
     else:
         logger.error("❌ Scan failed — no results returned.")
 

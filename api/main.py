@@ -46,6 +46,11 @@ from db.migrate_threat import run_migration as _run_threat_migration
 from db.migrate_watchlist import run_migration as _run_watchlist_migration
 from db.migrate_options_plays import run_migration as _run_options_plays_migration
 from db.migrate_short_delta import run_migration as _run_short_delta_migration
+try:
+    from intel.notifier import notify_high_rc_play as _notify_high_rc_play
+    _NOTIFIER_AVAILABLE = True
+except ImportError:
+    _NOTIFIER_AVAILABLE = False
 from intel.earnings_calendar import seed_from_payload, save_earnings_date, get_all_upcoming_dates
 from backtest.engine import (
     run_full_backtest,
@@ -468,7 +473,7 @@ def _run_scan_background(req: ScanRequest):
         if req.enable_sec: intel_layers.append("sec")
         if req.enable_sentiment: intel_layers.append("sentiment")
         if req.enable_whale: intel_layers.append("whale")
-        scan_id = save_scan(results, intel_layers=intel_layers, duration_seconds=duration)
+        scan_id, _ = save_scan(results, intel_layers=intel_layers, duration_seconds=duration)
         _scan_status["last_scan_id"] = scan_id
         _scan_status["message"] = f"Complete. {len(results)} tickers in {duration:.1f}s."
     except Exception as e:
@@ -854,6 +859,13 @@ def _fetch_plays_background(ticker):
                     )
                 except Exception:
                     pass  # P&L logging is non-critical
+                # Email alert for high-conviction plays (RC ≥ 80)
+                if rc >= 80 and _NOTIFIER_AVAILABLE:
+                    try:
+                        play_with_price = {**play, "entry_price": data["price"]}
+                        _notify_high_rc_play(ticker, play_with_price, rc)
+                    except Exception:
+                        pass  # notifications are non-critical
 
         result = {
             "ticker": ticker, "price": data["price"],
@@ -1668,6 +1680,41 @@ def get_recent_signals(ticker: str, limit: int = Query(40, ge=5, le=100)):
     """, (t, limit)).fetchall()
     conn.close()
     return {"ticker": t, "signals": [dict(r) for r in rows], "total": len(rows)}
+
+
+@app.get("/signals/momentum")
+def get_momentum_signals(limit: int = Query(20, ge=5, le=100)):
+    """
+    Return recent score momentum events — tickers whose LT or Opt score
+    jumped or dropped ≥8 pts between consecutive scans.
+    """
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT sg.ticker, sg.signal_text, sg.impact, sc.timestamp AS scan_ts, sg.scan_id
+        FROM signals sg
+        JOIN scans sc ON sg.scan_id = sc.id
+        WHERE sg.signal_type = 'momentum'
+        ORDER BY sg.id DESC LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    return {"events": [dict(r) for r in rows], "total": len(rows)}
+
+
+# ── Test notification endpoint ─────────────────────────────────────────────────
+
+@app.post("/notify/test")
+def test_notification():
+    """Send a test email to verify SMTP configuration."""
+    if not _NOTIFIER_AVAILABLE:
+        return {"status": "unavailable", "message": "Notifier module not loaded"}
+    try:
+        from intel.notifier import test_email
+        sent = test_email()
+        if sent:
+            return {"status": "sent", "message": "Test email dispatched — check your inbox"}
+        return {"status": "disabled", "message": "Email not configured — set ALERT_EMAIL_TO, ALERT_EMAIL_FROM, GMAIL_APP_PASSWORD"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 # ── Watchlist — Custom ticker tracking ────────────────────────────────────────

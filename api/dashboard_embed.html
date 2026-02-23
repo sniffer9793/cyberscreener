@@ -280,8 +280,12 @@ function MarketBar(){
 
 // ─── Overview ───
 function OverviewTab({stats,latest,onSelectPlay,tz}){
+  const [momentum,setMomentum]=useState(null);
+  const [momFilter,setMomFilter]=useState("all");
+  useEffect(()=>{api("/signals/momentum?limit=20").then(d=>{if(d)setMomentum(d)})},[]);
   if(!stats)return React.createElement("div",{style:{color:C.textSec,padding:40,textAlign:"center"}},"Loading...");
   const res=latest?.results||[],topLT=res.slice(0,10),topOpt=[...res].sort((a,b)=>b.opt_score-a.opt_score).slice(0,10),rsiData=[...res].sort((a,b)=>a.rsi-b.rsi);
+  const momEvt=(momentum?.events||[]).filter(e=>momFilter==="all"||(momFilter==="up"&&e.impact==="positive")||(momFilter==="down"&&e.impact==="negative"));
   return React.createElement("div",{className:"fade-in",style:{display:"flex",flexDirection:"column",gap:20}},
     React.createElement("div",{style:{padding:"16px 20px",background:"linear-gradient(135deg,#f0f0ff,#f5f0ff)",borderRadius:14,border:"1px solid #d9d4f8",fontSize:13,color:C.text,lineHeight:1.7}},
       React.createElement("strong",null,"Augur")," scans ",React.createElement("strong",null,res.length+" tickers")," across cyber, energy, and defense every 2 hours. ",React.createElement("strong",null,"LT Score")," = fundamentals (Rule of 40, valuation, FCF, trend). ",React.createElement("strong",null,"Opt Score")," = options opportunity (earnings, IV, direction, technicals). Use the ",React.createElement("strong",null,"Watchlist")," to track custom tickers."),
@@ -289,6 +293,22 @@ function OverviewTab({stats,latest,onSelectPlay,tz}){
     React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}},
       React.createElement(Metric,{label:"Total Scans",value:stats.total_scans}),React.createElement(Metric,{label:"Universe",value:res.length+" tickers"}),React.createElement(Metric,{label:"Records",value:(stats.total_score_records||0).toLocaleString()}),React.createElement(Metric,{label:"Last Scan",value:stats.last_scan?fmtTS(stats.last_scan,tz):"—"})),
     React.createElement(Card,{style:{padding:20}},React.createElement(KillerPlaysWidget,{onSelectPlay})),
+    React.createElement(Card,{style:{padding:20}},
+      React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:momEvt.length>0?14:8}},
+        React.createElement("h2",{style:{fontSize:15,fontWeight:700,margin:0}},"🔥 Score Momentum"),
+        React.createElement("div",{style:{display:"flex",gap:4}},
+          [["all","All"],["up","📈 Gainers"],["down","📉 Losers"]].map(([k,l])=>React.createElement("button",{key:k,onClick:()=>setMomFilter(k),style:{padding:"4px 10px",borderRadius:7,fontSize:11,fontWeight:600,cursor:"pointer",background:momFilter===k?C.blueBg:C.bgCard,border:"1px solid "+(momFilter===k?C.blue+"40":C.border),color:momFilter===k?C.blue:C.textSec}},l)))),
+      momEvt.length===0
+        ? React.createElement("div",{style:{fontSize:12,color:C.textSec,padding:"4px 0"}},"No significant score changes yet — momentum signals appear after consecutive scans show ≥8pt moves.")
+        : React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:4}},
+            momEvt.slice(0,10).map((e,i)=>{
+              const up=e.impact==="positive",col=up?C.green:C.red;
+              const ageMs=e.scan_ts?Date.now()-new Date(e.scan_ts.includes('T')?e.scan_ts:e.scan_ts.replace(' ','T')+'Z'):0;
+              const age=ageMs>0?(ageMs<3600000?Math.round(ageMs/60000)+"m":Math.round(ageMs/3600000)+"h")+" ago":"";
+              return React.createElement("div",{key:i,onClick:()=>onSelectPlay&&onSelectPlay(e.ticker),style:{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,background:i%2===0?C.bg:"transparent",cursor:"pointer",borderLeft:"3px solid "+col+"30"}},
+                React.createElement("span",{style:{fontSize:12,fontWeight:700,fontFamily:mono,minWidth:50,color:C.text}},e.ticker),
+                React.createElement("span",{style:{flex:1,fontSize:11,color:C.textSec,lineHeight:1.4}},e.signal_text),
+                React.createElement("span",{style:{fontSize:10,color:C.textTri,whiteSpace:"nowrap",marginLeft:4}},age))}))),
     React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}},
       React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:14}},"Long-Term Leaders"),topLT.map((r,i)=>React.createElement("div",{key:r.ticker,style:{display:"grid",gridTemplateColumns:"20px 56px 1fr 60px",alignItems:"center",gap:8,padding:"5px 0"}},React.createElement("span",{style:{fontSize:11,color:C.textTri,fontWeight:600}},i+1),React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement(ScoreBar,{score:r.lt_score}),React.createElement("span",{style:{fontSize:12,color:C.textSec,textAlign:"right",fontFamily:mono}},"$"+r.price)))),
       React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:14}},"Options Leaders"),topOpt.map((r,i)=>React.createElement("div",{key:r.ticker,style:{display:"grid",gridTemplateColumns:"20px 56px 1fr 60px",alignItems:"center",gap:8,padding:"5px 0"}},React.createElement("span",{style:{fontSize:11,color:C.textTri,fontWeight:600}},i+1),React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement(ScoreBar,{score:r.opt_score}),React.createElement("span",{style:{fontSize:12,color:C.textSec,textAlign:"right",fontFamily:mono}},"RSI "+(r.rsi!=null?Math.round(r.rsi):"—")))))),

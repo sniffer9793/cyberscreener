@@ -89,7 +89,7 @@ CYBER_UNIVERSE = {
     "Data Security": ["VRNS", "VRNT"],
     "Gov / Defense Cyber": ["CACI", "LDOS", "SAIC", "BAH", "BBAI", "PLTR"],
     "Mid/Small Cap Plays": ["TLS", "OSPN", "JAMF", "DT", "ESTC", "RBBN"],
-    "ETF Benchmarks": ["CIBR", "HACK", "BUG"],
+    "ETF Benchmarks": ["HACK"],  # CIBR and BUG removed — no fundamentals/options data
 }
 
 _CYBER_FALLBACK = sorted(list(set(t for tickers in CYBER_UNIVERSE.values() for t in tickers)))

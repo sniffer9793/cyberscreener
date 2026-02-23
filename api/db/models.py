@@ -317,9 +317,74 @@ def save_scan(results, intel_layers=None, duration_seconds=None, **kwargs):
                 (scan_id, r["ticker"], "score", reason, impact)
             )
 
+    # Momentum detection — compare new scores to previous scan
+    momentum_events = _detect_and_save_momentum(scan_id, results, conn)
+
     conn.commit()
     conn.close()
-    return scan_id
+    return scan_id, momentum_events
+
+
+def _detect_and_save_momentum(scan_id: int, results: list, conn) -> list:
+    """
+    Compare each ticker's new scores to its most recent previous scan scores.
+    Write momentum signals (signal_type='momentum') and return a list of events
+    for email notification.
+
+    Returns: [{ticker, score_type, delta, old_score, new_score, text, impact}, ...]
+    """
+    events = []
+    THRESHOLD = 8  # minimum point change to count as a momentum event
+
+    for r in results:
+        ticker = r.get("ticker")
+        new_lt  = r.get("lt_score")
+        new_opt = r.get("opt_score")
+        if not ticker or new_lt is None or new_opt is None:
+            continue
+
+        # Fetch previous scan scores (the scan just before this one)
+        prev = conn.execute("""
+            SELECT lt_score, opt_score FROM scores
+            WHERE ticker = ? AND scan_id < ?
+            ORDER BY scan_id DESC LIMIT 1
+        """, (ticker, scan_id)).fetchone()
+        if not prev:
+            continue
+
+        prev_lt, prev_opt = prev["lt_score"], prev["opt_score"]
+        if prev_lt is None or prev_opt is None:
+            continue
+
+        for score_type, new_val, prev_val in [
+            ("lt", new_lt, prev_lt),
+            ("opt", new_opt, prev_opt),
+        ]:
+            delta = round(new_val - prev_val, 1)
+            if abs(delta) < THRESHOLD:
+                continue
+
+            direction = "📈" if delta > 0 else "📉"
+            label = "LT" if score_type == "lt" else "Opt"
+            sign  = "+" if delta > 0 else ""
+            text  = f"{direction} {label} score {sign}{delta:.0f} ({prev_val:.0f}→{new_val:.0f})"
+            impact = "positive" if delta > 0 else "negative"
+
+            conn.execute(
+                "INSERT INTO signals (scan_id, ticker, signal_type, signal_text, impact) VALUES (?, ?, ?, ?, ?)",
+                (scan_id, ticker, "momentum", text, impact)
+            )
+            events.append({
+                "ticker":     ticker,
+                "score_type": score_type,
+                "delta":      delta,
+                "old_score":  prev_val,
+                "new_score":  new_val,
+                "text":       text,
+                "impact":     impact,
+            })
+
+    return events
 
 
 def get_score_history(ticker, days=90):
