@@ -86,7 +86,7 @@ def get_scoring_weights(ticker):
     return dict(SCORING_PROFILES.get(profile, SCORING_PROFILES[DEFAULT_PROFILE]))
 
 def get_universe_by_sector():
-    return {"cyber": CYBER_UNIVERSE, "energy": ENERGY_UNIVERSE, "defense": DEFENSE_UNIVERSE}
+    return {"cyber": CYBER_UNIVERSE, "energy": ENERGY_UNIVERSE, "defense": DEFENSE_UNIVERSE, "broad": BROAD_UNIVERSE}
 
 def get_sector_summary():
     counts = {}
