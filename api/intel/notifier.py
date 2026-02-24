@@ -51,9 +51,7 @@ def _send(subject: str, html_body: str) -> bool:
         msg["From"]    = _FROM
         msg["To"]      = _TO
         msg.attach(MIMEText(html_body, "html"))
-        with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
             smtp.login(_FROM, _PASS)
             smtp.sendmail(_FROM, _TO, msg.as_string())
         logger.info(f"📧 Email sent: {subject}")
