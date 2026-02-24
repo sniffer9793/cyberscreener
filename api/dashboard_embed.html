@@ -288,7 +288,7 @@ function OverviewTab({stats,latest,onSelectPlay,tz}){
   const momEvt=(momentum?.events||[]).filter(e=>momFilter==="all"||(momFilter==="up"&&e.impact==="positive")||(momFilter==="down"&&e.impact==="negative"));
   return React.createElement("div",{className:"fade-in",style:{display:"flex",flexDirection:"column",gap:20}},
     React.createElement("div",{style:{padding:"16px 20px",background:"linear-gradient(135deg,#f0f0ff,#f5f0ff)",borderRadius:14,border:"1px solid #d9d4f8",fontSize:13,color:C.text,lineHeight:1.7}},
-      React.createElement("strong",null,"Augur")," scans ",React.createElement("strong",null,res.length+" tickers")," across cyber, energy, and defense every 2 hours. ",React.createElement("strong",null,"LT Score")," = fundamentals (Rule of 40, valuation, FCF, trend). ",React.createElement("strong",null,"Opt Score")," = options opportunity (earnings, IV, direction, technicals). Use the ",React.createElement("strong",null,"Watchlist")," to track custom tickers."),
+      React.createElement("strong",null,"Augur")," scans ",React.createElement("strong",null,res.length+" tickers")," across cyber, energy, defense, tech, health, financials, and more — every 30 minutes. ",React.createElement("strong",null,"LT Score")," = fundamentals (Rule of 40, valuation, FCF, trend). ",React.createElement("strong",null,"Opt Score")," = options opportunity (earnings, IV, direction, technicals). Use the ",React.createElement("strong",null,"Watchlist")," to track custom tickers."),
     React.createElement(Card,{style:{padding:16}},React.createElement(MarketBar,null)),
     React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}},
       React.createElement(Metric,{label:"Total Scans",value:stats.total_scans}),React.createElement(Metric,{label:"Universe",value:res.length+" tickers"}),React.createElement(Metric,{label:"Records",value:(stats.total_score_records||0).toLocaleString()}),React.createElement(Metric,{label:"Last Scan",value:stats.last_scan?fmtTS(stats.last_scan,tz):"—"})),
@@ -664,7 +664,7 @@ function BacktestTab({backtest:init,tz}){
     qc.length===0&&lc.length===0&&React.createElement(Card,{style:{padding:40,textAlign:"center"}},
       React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),
       React.createElement("div",{style:{fontSize:15,fontWeight:600,marginBottom:6}},"Not enough data yet"),
-      React.createElement("div",{style:{fontSize:12,color:C.textSec,maxWidth:400,margin:"0 auto",lineHeight:1.7}},"The backtest engine needs scores from multiple days to measure predictive power. Scans run automatically every 2 hours during market hours. Come back tomorrow to see your first correlation data.")));}
+      React.createElement("div",{style:{fontSize:12,color:C.textSec,maxWidth:400,margin:"0 auto",lineHeight:1.7}},"The backtest engine needs scores from multiple days to measure predictive power. Scans run automatically every 30 minutes during market hours. Come back tomorrow to see your first correlation data.")));}
 
 // ─── Watchlist Tab ───
 function WatchlistTab(){
