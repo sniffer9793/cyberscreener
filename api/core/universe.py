@@ -1,6 +1,8 @@
 """
 CyberScreener Universe v2 — Multi-sector stock universe.
+Includes curated cyber/energy/defense sectors plus broad S&P 500 + Nasdaq 100.
 """
+from core.broad_universe import BROAD_UNIVERSE
 
 CYBER_UNIVERSE = {
     "Platform Giants": ["CRWD", "PANW", "FTNT", "ZS", "CSCO"],
@@ -48,11 +50,24 @@ for subsector, tickers in DEFENSE_UNIVERSE.items():
         if t not in _TICKER_META:
             _TICKER_META[t] = {"sector": "defense", "subsector": subsector, "scoring_profile": "defense"}
 
+_SECTOR_TO_PROFILE = {
+    "Technology": "saas", "Communication": "saas", "Consumer Disc": "saas",
+    "Health Care": "saas", "Financials": "financial", "Industrials": "defense",
+    "Consumer Staples": "energy", "Materials": "defense",
+    "Energy Broad": "energy", "Utilities": "energy", "Real Estate": "reit",
+}
+for _subsector, _tickers in BROAD_UNIVERSE.items():
+    _profile = _SECTOR_TO_PROFILE.get(_subsector, "saas")
+    for _t in _tickers:
+        if _t not in _TICKER_META:
+            _TICKER_META[_t] = {"sector": "broad", "subsector": _subsector, "scoring_profile": _profile}
+
 SCORING_PROFILES = {
-    "saas": {"rule_of_40": 28, "valuation": 18, "fcf_margin": 18, "trend": 15, "earnings_quality": 11, "discount_momentum": 10},
-    "energy": {"rule_of_40": 10, "valuation": 22, "fcf_margin": 30, "trend": 15, "earnings_quality": 15, "discount_momentum": 8},
-    "reit": {"rule_of_40": 8, "valuation": 20, "fcf_margin": 35, "trend": 15, "earnings_quality": 15, "discount_momentum": 7},
-    "defense": {"rule_of_40": 12, "valuation": 20, "fcf_margin": 22, "trend": 15, "earnings_quality": 20, "discount_momentum": 11},
+    "saas":      {"rule_of_40": 28, "valuation": 18, "fcf_margin": 18, "trend": 15, "earnings_quality": 11, "discount_momentum": 10},
+    "energy":    {"rule_of_40": 10, "valuation": 22, "fcf_margin": 30, "trend": 15, "earnings_quality": 15, "discount_momentum":  8},
+    "reit":      {"rule_of_40":  8, "valuation": 20, "fcf_margin": 35, "trend": 15, "earnings_quality": 15, "discount_momentum":  7},
+    "defense":   {"rule_of_40": 12, "valuation": 20, "fcf_margin": 22, "trend": 15, "earnings_quality": 20, "discount_momentum": 11},
+    "financial": {"rule_of_40":  5, "valuation": 30, "fcf_margin": 20, "trend": 15, "earnings_quality": 20, "discount_momentum": 10},
 }
 
 DEFAULT_PROFILE = "saas"
@@ -84,3 +99,4 @@ ALL_TICKERS = get_all_tickers()
 ALL_CYBER_TICKERS = get_all_tickers(["cyber"])
 ALL_ENERGY_TICKERS = get_all_tickers(["energy"])
 ALL_DEFENSE_TICKERS = get_all_tickers(["defense"])
+ALL_BROAD_TICKERS = get_all_tickers(["broad"])

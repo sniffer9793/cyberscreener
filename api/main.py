@@ -1754,19 +1754,38 @@ def watchlist_list():
     return {"items": items, "total": len(items)}
 
 
+def _scan_watchlist_ticker(ticker: str):
+    """Run a quick single-ticker scan for a newly-added watchlist item."""
+    try:
+        from core.scanner import run_scan
+        results = run_scan(tickers=[ticker], enable_sec=True, enable_sentiment=True)
+        if results:
+            save_scan(results, intel_layers=["sec", "sentiment"], duration_seconds=0)
+            logger.info(f"✅ Watchlist scan complete for {ticker}")
+    except Exception as e:
+        logger.warning(f"Watchlist scan failed for {ticker}: {e}")
+
+
 @app.post("/watchlist")
-def watchlist_add(req: WatchlistAddRequest):
-    """Add a ticker to the watchlist."""
+def watchlist_add(req: WatchlistAddRequest, background_tasks: BackgroundTasks):
+    """Add a ticker to the watchlist and immediately trigger a background scan."""
     ticker = req.ticker.upper().strip()
     # Validate ticker format
     if not ticker or len(ticker) > 10 or not ticker.replace(".", "").isalnum():
         raise HTTPException(status_code=400, detail="Invalid ticker format (max 10 chars, alphanumeric)")
     try:
         added = add_to_watchlist(ticker, notes=req.notes or "", sector=req.sector or "unknown")
+        if added:
+            background_tasks.add_task(_scan_watchlist_ticker, ticker)
+            return {
+                "status": "added",
+                "ticker": ticker,
+                "message": f"{ticker} added — scanning now, scores ready in ~15s",
+            }
         return {
-            "status": "added" if added else "already_exists",
+            "status": "already_exists",
             "ticker": ticker,
-            "message": f"{ticker} {'added to' if added else 'already in'} watchlist",
+            "message": f"{ticker} already in watchlist",
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

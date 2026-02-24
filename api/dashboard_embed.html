@@ -317,20 +317,32 @@ function OverviewTab({stats,latest,onSelectPlay,tz}){
         [{i:"📋",n:"SEC Filings",d:"Insider transactions, analyst ratings, holdings"},{i:"💬",n:"Sentiment",d:"Social sentiment + analyst consensus"},{i:"🐋",n:"Whale Flow",d:"Unusual options activity, block trades"},{i:"🛡",n:"Threat Intel",d:"Live breach news, service outages, macro regime — feeds directly into opt_score"}].map(l=>React.createElement("div",{key:l.n,style:{padding:16,background:C.bg,borderRadius:12,border:"1px solid "+C.border}},React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:8}},React.createElement("span",{style:{fontSize:16}},l.i),React.createElement("span",{style:{fontSize:13,fontWeight:700}},l.n),React.createElement("span",{style:{marginLeft:"auto",fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,background:C.greenBg,color:C.green,border:"1px solid "+C.greenBorder}},"Live")),React.createElement("div",{style:{fontSize:12,color:C.textSec,lineHeight:1.5}},l.d))))),
     rsiData.length>0&&React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:12}},"RSI Overview"),React.createElement(SvgBarChart,{data:rsiData,dataKey:"rsi",labelKey:"ticker",height:220,colorFn:d=>d.rsi<30?C.green:d.rsi>70?C.red:C.amber})));}
 
-// ─── Scores ───
+// ─── Scores (Long Tab) ───
 function ScoresTab({latest}){
   const [sel,setSel]=useState(null),[hist,setHist]=useState(null),[filter,setFilter]=useState("all"),[signals,setSignals]=useState(null),[showSig,setShowSig]=useState(false);
   const results=latest?.results||[];const load=useCallback(async t=>{setSel(t);setHist(null);setSignals(null);setShowSig(false);const d=await api("/scores/"+t+"?days=180");if(d)setHist(d)},[]);
   const lr=sel?results.find(r=>r.ticker===sel):null,L=hist?.history?.length?hist.history[hist.history.length-1]:null,F=hist?.history?.length?hist.history[0]:null;
   const cd=hist?.history?.map(h=>{const ds=fmtDateOnly(h.timestamp);return({date:ds,lt_score:h.lt_score,opt_score:h.opt_score,price:h.price,rsi:h.rsi})})||[];
-  const fl=filter==="all"?results:results.filter(r=>r.sector===filter);
+  function applyFilter(r){
+    if(filter==="all")return true;
+    if(filter==="cyber"||filter==="energy"||filter==="defense")return r.sector===filter;
+    if(filter==="tech")return r.sector==="broad"&&r.subsector==="Technology";
+    if(filter==="health")return r.sector==="broad"&&r.subsector==="Health Care";
+    if(filter==="finance")return r.sector==="broad"&&r.subsector==="Financials";
+    if(filter==="consumer")return r.sector==="broad"&&(r.subsector==="Consumer Disc"||r.subsector==="Consumer Staples");
+    if(filter==="industrial")return r.sector==="broad"&&r.subsector==="Industrials";
+    if(filter==="broad")return r.sector==="broad";
+    return true;
+  }
+  const fl=results.filter(applyFilter);
+  const allFilters=[["all","All"],["cyber","Cyber"],["energy","Energy"],["defense","Defense"],["tech","Tech"],["health","Health"],["finance","Finance"],["consumer","Consumer"],["industrial","Industrial"],["broad","Broad"]];
   return React.createElement("div",{className:"fade-in",style:{display:"flex",gap:16,minHeight:"60vh"}},
     React.createElement("div",{style:{width:320,flexShrink:0,display:"flex",flexDirection:"column",gap:8}},
-      React.createElement("div",{style:{display:"flex",gap:4}},["all","cyber","energy","defense"].map(s=>React.createElement("button",{key:s,onClick:()=>setFilter(s),style:{padding:"5px 12px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",background:filter===s?C.blue+"12":"transparent",border:"1px solid "+(filter===s?C.blue+"30":C.border),color:filter===s?C.blue:C.textSec,textTransform:"capitalize"}},s))),
+      React.createElement("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},allFilters.map(([s,l])=>React.createElement("button",{key:s,onClick:()=>setFilter(s),style:{padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",background:filter===s?C.blue+"12":"transparent",border:"1px solid "+(filter===s?C.blue+"30":C.border),color:filter===s?C.blue:C.textSec}},l))),
       React.createElement(Card,{style:{padding:12,maxHeight:"65vh",overflowY:"auto"}},React.createElement("div",{style:{fontSize:11,color:C.textSec,fontWeight:600,textTransform:"uppercase",letterSpacing:".04em",padding:"4px 8px",marginBottom:4}},fl.length+" tickers"),
-        fl.map(r=>{const sd=r.short_delta;const sdEl=sd!=null&&Math.abs(sd)>=2?React.createElement("span",{title:"Short interest delta: "+(sd>0?"+":"")+sd+"pp (60d)",style:{fontSize:10,fontWeight:700,color:sd<-3?C.green:sd>3?C.red:C.textTri,lineHeight:1}},sd<-3?"↓SI":sd>3?"↑SI":"·"):null;return React.createElement("div",{key:r.ticker,onClick:()=>load(r.ticker),style:{display:"grid",gridTemplateColumns:"54px 1fr 44px 44px 22px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:8,cursor:"pointer",background:sel===r.ticker?C.blueBg:"transparent",borderLeft:sel===r.ticker?"3px solid "+C.blue:"3px solid transparent"}},React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement("span",{style:{fontSize:11,color:C.textSec,fontFamily:mono}},"$"+r.price),React.createElement(Badge,{color:r.lt_score>=50?C.green:r.lt_score>=30?C.amber:C.textTri},r.lt_score),React.createElement(Badge,{color:r.opt_score>=40?C.green:r.opt_score>=25?C.amber:C.textTri},r.opt_score),sdEl||React.createElement("span",null))}))),
+        fl.map(r=>{const sd=r.short_delta;const sdEl=sd!=null&&Math.abs(sd)>=2?React.createElement("span",{title:"Short interest delta: "+(sd>0?"+":"")+sd+"pp (60d)",style:{fontSize:10,fontWeight:700,color:sd<-3?C.green:sd>3?C.red:C.textTri,lineHeight:1}},sd<-3?"↓SI":sd>3?"↑SI":"·"):null;const isBuyZone=r.lt_score>=55&&r.rsi<=45;return React.createElement("div",{key:r.ticker,onClick:()=>load(r.ticker),style:{display:"grid",gridTemplateColumns:"54px 1fr 44px 44px 22px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:8,cursor:"pointer",background:sel===r.ticker?C.blueBg:"transparent",borderLeft:sel===r.ticker?"3px solid "+C.blue:"3px solid transparent"}},React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement("div",null,React.createElement("span",{style:{fontSize:11,color:C.textSec,fontFamily:mono}},"$"+r.price),isBuyZone&&React.createElement("span",{style:{marginLeft:4,fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:C.greenBg,color:C.green,border:"1px solid "+C.greenBorder}},"🟢 Buy Zone")),React.createElement(Badge,{color:r.lt_score>=50?C.green:r.lt_score>=30?C.amber:C.textTri},r.lt_score),React.createElement("span",{style:{fontSize:11,fontWeight:600,padding:"2px 6px",borderRadius:5,background:"#f5f5f5",color:C.textSec,fontFamily:mono}},r.opt_score),sdEl||React.createElement("span",null))}))),
     React.createElement("div",{style:{flex:1}},
-      !sel?React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:32,marginBottom:12,opacity:.5}},"◆"),React.createElement("div",{style:{fontSize:15,fontWeight:600,marginBottom:8}},"Score Explorer"),React.createElement("div",{style:{fontSize:13,color:C.textSec,maxWidth:400,margin:"0 auto",lineHeight:1.6}},"Select a ticker to view score history, component breakdown, and layer status."))
+      !sel?React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:32,marginBottom:12,opacity:.5}},"📈"),React.createElement("div",{style:{fontSize:15,fontWeight:600,marginBottom:4}},"Long-Term Scores"),React.createElement("div",{style:{fontSize:12,color:C.textSec,marginBottom:10}},"Long-term value positions · Retirement account ideas"),React.createElement("div",{style:{fontSize:13,color:C.textSec,maxWidth:400,margin:"0 auto",lineHeight:1.6}},"Select a ticker to view score history, component breakdown, and layer status."))
       :!L?React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{className:"pulse",style:{fontSize:14,color:C.textSec}},"Loading "+sel+"..."))
       :React.createElement("div",{className:"fade-in",style:{display:"flex",flexDirection:"column",gap:16}},
         React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12}},React.createElement(Metric,{label:"LT Score",value:L.lt_score,color:L.lt_score>=60?C.green:L.lt_score>=35?C.amber:C.red,sub:"Long-term quality"}),React.createElement(Metric,{label:"Opt Score",value:L.opt_score,color:L.opt_score>=40?C.green:L.opt_score>=25?C.amber:C.red,sub:"Options opportunity"}),React.createElement(Metric,{label:"LT Δ",value:(L.lt_score-F.lt_score>=0?"+":"")+(L.lt_score-F.lt_score),color:L.lt_score>=F.lt_score?C.green:C.red}),React.createElement(Metric,{label:"Price",value:"$"+L.price})),
@@ -761,6 +773,205 @@ function IntelTab({tz}){
             svc.status||"unknown")))
       )));}
 
+// ─── Research Tab (merged: Backtest + Watchlist + Intel) ───
+function ResearchTab({backtest:initBacktest,tz}){
+  const [subTab,setSubTab]=useState("backtest");
+
+  // ── Backtest state ──
+  const [period,setPeriod]=useState(30),[btData,setBtData]=useState(initBacktest),[btLoading,setBtLoading]=useState(false);
+  const [wtHist,setWtHist]=useState(null),[calRunning,setCalRunning]=useState(false),[calMsg,setCalMsg]=useState("");
+  const [inverseOpen,setInverseOpen]=useState(false),[inversePlays,setInversePlays]=useState(null),[invLoading,setInvLoading]=useState(false);
+  const loadBT=useCallback(async fwd=>{setBtLoading(true);const d=await api("/backtest?days=180&forward_period="+fwd);if(d)setBtData(d);setBtLoading(false)},[]);
+  const loadWH=useCallback(async()=>{const d=await api("/weights/history?limit=30");if(d)setWtHist(d)},[]);
+  useEffect(()=>{if(!btData)loadBT(period);loadWH()},[]);
+  const runCalibrate=async()=>{setCalRunning(true);setCalMsg("Calibrating weights…");const d=await api("/calibrate",{method:"POST"});setCalRunning(false);if(d&&d.status==="calibrated"){setCalMsg("✓ Weights updated");loadWH()}else setCalMsg(d?.message||"Insufficient data")};
+
+  // ── Watchlist state ──
+  const [wlItems,setWlItems]=useState(null),[wlInput,setWlInput]=useState(""),[wlNotes,setWlNotes]=useState(""),[wlSector,setWlSector]=useState("unknown"),[wlSaving,setWlSaving]=useState(false),[wlMsg,setWlMsg]=useState("");
+  const wlPollRef=useRef(null),[wlPollTicker,setWlPollTicker]=useState(null);
+  const loadWl=useCallback(()=>{api("/watchlist").then(d=>{if(d)setWlItems(d.items||[])})},[]);
+  useEffect(()=>{loadWl()},[]);
+  function stopWlPoll(){if(wlPollRef.current){clearInterval(wlPollRef.current);wlPollRef.current=null}setWlPollTicker(null)}
+  function startWlPoll(ticker){
+    setWlMsg("⏳ Scanning "+ticker+"…");setWlPollTicker(ticker);
+    let elapsed=0;
+    wlPollRef.current=setInterval(async()=>{
+      elapsed+=4000;
+      const d=await api("/watchlist");
+      if(d){setWlItems(d.items||[]);const allScored=(d.items||[]).every(it=>it.has_scores);if(allScored||elapsed>=20000){stopWlPoll();if(allScored)setWlMsg("✓ Scores updated");else setWlMsg("Done — scan in progress")}}
+      if(elapsed>=20000)stopWlPoll()
+    },4000)
+  }
+  useEffect(()=>()=>stopWlPoll(),[]);
+  const addTicker=async()=>{
+    const t=wlInput.trim().toUpperCase();if(!t)return;
+    setWlSaving(true);setWlMsg("");
+    const r=await api("/watchlist",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ticker:t,notes:wlNotes,sector:wlSector})});
+    setWlSaving(false);
+    if(r){setWlInput("");setWlNotes("");loadWl();startWlPoll(t)}else setWlMsg("Failed to add ticker")
+  };
+  const removeTicker=async t=>{await api("/watchlist/"+t,{method:"DELETE"});loadWl()};
+
+  // ── Intel state ──
+  const [news,setNews]=useState(null),[outages,setOutages]=useState(null),[newsLoading,setNewsLoading]=useState(true),[outLoading,setOutLoading]=useState(true);
+  useEffect(()=>{if(subTab==="intel"&&!news){api("/intel/news").then(d=>{if(d)setNews(d);setNewsLoading(false)});api("/intel/outages").then(d=>{if(Array.isArray(d))setOutages(d);setOutLoading(false)})}},[subTab]);
+  const tagColors={breach:"#fff0f0",ransomware:"#fff0f0",hack:"#fff0f0",exploit:"#fff8e1","zero-day":"#fff0f0",vulnerability:"#fff8e1",attack:"#fff0f0",phishing:"#fff8e1",malware:"#fff0f0",outage:"#f3e8ff",leak:"#fff0f0",credential:"#fff8e1"};
+  const tagTxtColors={breach:C.red,ransomware:C.red,hack:C.red,exploit:C.amber,"zero-day":C.red,vulnerability:C.amber,attack:C.red,phishing:C.amber,malware:C.red,outage:C.purple,leak:C.red,credential:C.amber};
+  const statusCol={operational:C.green,degraded:C.amber,outage:C.red,unknown:C.textSec};
+  const statusBg={operational:C.greenBg,degraded:"#fff8e1",outage:C.redBg,unknown:C.bgCard};
+  const statusBrd={operational:C.greenBorder,degraded:"#ffe082",outage:C.redBorder,unknown:C.border};
+  const statusIcon={operational:"✓",degraded:"⚠",outage:"✕",unknown:"?"};
+
+  // ── Sub-tab pills ──
+  const subPills=React.createElement("div",{style:{display:"flex",gap:6,marginBottom:20}},
+    [["backtest","◈ Backtest"],["watchlist","📌 Watchlist"],["intel","🛡 Intel"]].map(([k,l])=>React.createElement("button",{key:k,onClick:()=>setSubTab(k),style:{padding:"6px 16px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",background:subTab===k?"#1d1d1f":"#f0f0f2",color:subTab===k?"#fff":C.textSec,border:"1px solid "+(subTab===k?"#1d1d1f":C.border)}},l)));
+
+  // ── Backtest section ──
+  let backtestSection=null;
+  if(subTab==="backtest"){
+    if(btLoading)backtestSection=React.createElement("div",{style:{color:C.textSec,padding:40,textAlign:"center"}},"Running backtest…");
+    else if(!btData)backtestSection=React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),React.createElement("div",{style:{fontSize:15,fontWeight:600}},"Loading backtest…"));
+    else{
+      const sd=btData.score_vs_returns||{},ld=btData.layer_attribution||{},ed=btData.earnings_timing||{};
+      const ltA=sd.lt_analysis||{},optA=sd.opt_analysis||{};
+      const ltCorr=ltA.correlation,optCorr=optA.correlation;
+      const qs=ltA.quintile_spread,obs=ltA.data_points||0;
+      const modelHealth=(ltCorr>0.15&&qs>2)?"Strong":(ltCorr>0.05||qs>1)?"Moderate":"Weak";
+      const modelCol=modelHealth==="Strong"?C.green:modelHealth==="Moderate"?C.amber:C.red;
+      const qc=[];if(ltA.status==="ok"&&ltA.quintiles)Object.entries(ltA.quintiles).forEach(([l,s])=>{qc.push({name:l,"return":s.avg_return,winRate:s.win_rate,count:s.count})});
+      const q1ret=qc.find(q=>q.name==="Q1")?.return||0,q5ret=qc.find(q=>q.name==="Q5")?.return||0,spread=q5ret-q1ret;
+      const compLabels={lt_rule_of_40:"Rule of 40",lt_valuation:"Valuation",lt_fcf_margin:"FCF Margin",lt_trend:"Trend",lt_earnings_quality:"Earn. Quality",lt_discount_momentum:"Disc. Mom."};
+      const lc=[];if(ld.lt_component_attribution)Object.entries(ld.lt_component_attribution).forEach(([k,v])=>{if(v.correlation!=null)lc.push({name:compLabels[k]||k,alpha:v.correlation,alpha_pct:v.correlation*100})});lc.sort((a,b)=>b.alpha-a.alpha);
+      const ec=[];if(ed.forward_14d&&ed.forward_30d)Object.entries(ed.forward_14d).forEach(([label,v14])=>{const v30=ed.forward_30d[label]||{};if((v14.count||0)>0||(v30.count||0)>0)ec.push({name:label,return14d:v14.avg_return||0,return30d:v30.avg_return||0,count:v14.count||0})});
+      const bestWindow=ec.length>0?ec.reduce((a,b)=>a.return14d>b.return14d?a:b).name:"—";
+      const WH=wtHist?.history||[];
+      const ltHist=WH.filter(w=>w.score_type==="lt").slice(0,10);
+      const ltKeys=["rule_of_40","valuation","fcf_margin","trend","earnings_quality","discount_momentum"];
+      const ltLabels={rule_of_40:"Rule of 40",valuation:"Valuation",fcf_margin:"FCF Margin",trend:"Trend",earnings_quality:"Earn. Quality",discount_momentum:"Disc. Mom."};
+      backtestSection=React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:20}},
+        React.createElement(Card,{style:{padding:20}},
+          React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}},
+            React.createElement("div",null,React.createElement("h2",{style:{fontSize:17,fontWeight:700,margin:0}},"Model Health"),React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:"4px 0 0"}},"180-day lookback · "+obs+" score/return observations")),
+            React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10}},
+              React.createElement("span",{style:{fontSize:13,fontWeight:700,padding:"6px 14px",borderRadius:8,background:modelCol+"18",color:modelCol,border:"1px solid "+modelCol+"40"}},modelHealth+" Signal"),
+              React.createElement("button",{onClick:runCalibrate,disabled:calRunning,style:{padding:"8px 16px",borderRadius:8,fontSize:12,fontWeight:600,cursor:calRunning?"wait":"pointer",background:C.blueBg,color:C.blue,border:"1px solid "+C.blueBorder}},calRunning?"Calibrating…":"⚙ Auto-Calibrate"),
+              calMsg&&React.createElement("span",{style:{fontSize:11,color:C.textSec}},calMsg))),
+          React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}},
+            React.createElement(Metric,{label:"LT Score Correlation",value:ltCorr!=null?ltCorr.toFixed(3):"—",color:ltCorr!=null?(ltCorr>0.15?C.green:ltCorr>0.05?C.amber:C.red):C.textSec,sub:ltCorr!=null?(ltCorr>0.15?"Strong predictive power":ltCorr>0.05?"Moderate signal":"Weak / no signal"):"No data yet"}),
+            React.createElement(Metric,{label:"Q5 − Q1 Spread",value:spread!=null?spread.toFixed(1)+"%":"—",color:spread>3?C.green:spread>1?C.amber:C.red,sub:spread>3?"Top scores beat bottom by >3%":spread>1?"Moderate separation":"Scores not yet discriminating"}),
+            React.createElement(Metric,{label:"Opt Score Correlation",value:optCorr!=null?optCorr.toFixed(3):"—",color:optCorr!=null?(optCorr>0.1?C.green:optCorr<-0.05?C.red:C.amber):C.textSec,sub:"Options score vs "+period+"d return"}),
+            React.createElement(Metric,{label:"Best Entry Window",value:bestWindow,color:C.blue,sub:"Days-to-earnings timing"}))),
+        React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+          React.createElement("span",{style:{fontSize:12,color:C.textSec,fontWeight:600}},"Forward return window:"),
+          [14,30,60].map(p=>React.createElement("button",{key:p,onClick:()=>{setPeriod(p);loadBT(p)},style:{padding:"7px 16px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:mono,background:period===p?C.blueBg:C.bgCard,border:"1px solid "+(period===p?C.blue+"40":C.border),color:period===p?C.blue:C.textSec}},p+"d")),
+          React.createElement("span",{style:{fontSize:11,color:C.textTri,marginLeft:"auto",fontFamily:mono}},obs+" observations")),
+        qc.length>0&&React.createElement(Card,{style:{padding:20}},
+          React.createElement("div",{style:{marginBottom:14}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:"0 0 4px"}},"Score Quintile → "+period+"d Return"),React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:0,lineHeight:1.6}},"Tickers ranked by LT Score and split into 5 equal buckets (Q1=lowest 20%, Q5=highest 20%). Their actual "+period+"-day stock returns are averaged per bucket. ",React.createElement("strong",null,"A working model shows Q5 outperforming Q1.")," A flat or inverted chart means scores aren't yet predictive — run Auto-Calibrate to reweight.")),
+          React.createElement(SvgBarChart,{data:qc,dataKey:"return",labelKey:"name",height:240,colorFn:(d,v)=>v>=0?C.green:C.red}),
+          React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginTop:12}},
+            qc.map(d=>React.createElement("div",{key:d.name,style:{padding:"8px 10px",background:C.bg,borderRadius:8,border:"1px solid "+C.border,textAlign:"center"}},
+              React.createElement("div",{style:{fontSize:11,fontWeight:700,fontFamily:mono,color:d.return>=0?C.green:C.red}},(d.return>=0?"+":"")+d.return.toFixed(1)+"%"),
+              React.createElement("div",{style:{fontSize:10,color:C.textSec,marginTop:2}},d.name+" · n="+d.count),
+              React.createElement("div",{style:{fontSize:10,color:C.textTri}},(d.winRate||0).toFixed(0)+"% winners"))))),
+        ltCorr!=null&&React.createElement("div",null,
+          React.createElement(Card,{style:{padding:16,background:ltCorr<-0.05?"#fffbeb":"#f0fdf4",border:"1px solid "+(ltCorr<-0.05?"#fcd34d":C.greenBorder)}},
+            React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}},
+              ltCorr<-0.05?React.createElement("div",null,React.createElement("span",{style:{fontSize:14,fontWeight:700,color:"#92400e"}},"⚠️ Model Inversion Detected  "),React.createElement("span",{style:{fontSize:12,color:"#78350f"}},"LT correlation is "+ltCorr.toFixed(3)+" — high-scored tickers are historically underperforming.")):React.createElement("div",null,React.createElement("span",{style:{fontSize:14,fontWeight:700,color:C.green}},"✓ Model is Normally Correlated  "),React.createElement("span",{style:{fontSize:12,color:C.textSec}},"LT correlation: "+ltCorr.toFixed(3)+". Inverse mode available as a research tool.")),
+              React.createElement("button",{onClick:async()=>{const opening=!inverseOpen;setInverseOpen(opening);if(opening&&!inversePlays){setInvLoading(true);const d=await api("/inverse-plays?limit=8");setInversePlays(d);setInvLoading(false)}},style:{padding:"8px 16px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",background:ltCorr<-0.05?"#fef3c7":"#f0fdf4",color:ltCorr<-0.05?"#92400e":C.green,border:"1px solid "+(ltCorr<-0.05?"#fcd34d":C.greenBorder)}},inverseOpen?"▲ Hide Anti-Augur":"🔄 Inverse the Plan"))),
+          inverseOpen&&React.createElement(Card,{style:{padding:20,marginTop:12,border:"2px dashed "+(ltCorr<-0.05?"#fcd34d":"#bbf7d0")}},
+            React.createElement("div",{style:{marginBottom:14}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:"0 0 4px",color:ltCorr<-0.05?"#92400e":C.text}},"🃏 Anti-Augur: Contrarian Plays"),React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:"0 0 10px",lineHeight:1.6}},"These are the tickers Augur scores ",React.createElement("em",null,"lowest")," in the current universe. ",ltCorr<-0.05?"When the model is inverted, these low-confidence tickers have historically been the actual outperformers. ":"Shown as a research overlay. ",inversePlays?.q1_avg_return!=null&&React.createElement("strong",{style:{color:ltCorr<-0.05?C.green:C.textSec}}," Q1 avg return: "+(inversePlays.q1_avg_return>=0?"+":"")+inversePlays.q1_avg_return.toFixed(1)+"% · Win rate: "+(inversePlays.q1_win_rate||0).toFixed(0)+"%.")),inversePlays?.is_inverted&&React.createElement("div",{style:{padding:"8px 12px",background:"#fef3c7",borderRadius:8,border:"1px solid #fcd34d",fontSize:12,color:"#92400e",marginBottom:10}},inversePlays.interpretation)),
+            invLoading&&React.createElement("div",{style:{color:C.textSec,fontSize:12,padding:"12px 0"}},"Loading contrarian plays…"),
+            !invLoading&&inversePlays&&inversePlays.plays&&React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}},
+              inversePlays.plays.map(p=>React.createElement("div",{key:p.ticker,style:{padding:"12px 14px",background:C.bg,borderRadius:10,border:"1px solid "+C.border}},
+                React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},React.createElement("span",{style:{fontSize:14,fontWeight:800,fontFamily:mono}},p.ticker),React.createElement("span",{style:{fontSize:11,color:C.textSec}},"$"+(p.price||"—"))),
+                React.createElement("div",{style:{display:"flex",gap:8,marginBottom:6}},React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:9,color:C.textTri,marginBottom:2}},"LT"),React.createElement("div",{style:{fontSize:12,fontWeight:700,fontFamily:mono,color:C.red}},(p.lt_score||0).toFixed(0))),React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:9,color:C.textTri,marginBottom:2}},"OPT"),React.createElement("div",{style:{fontSize:12,fontWeight:700,fontFamily:mono,color:C.amber}},(p.opt_score||0).toFixed(0))),React.createElement("div",{style:{flex:1}},React.createElement("div",{style:{fontSize:9,color:C.textTri,marginBottom:2}},"COMBINED"),React.createElement("div",{style:{fontSize:12,fontWeight:700,fontFamily:mono}},(p.combined_score||0).toFixed(0)))),
+                React.createElement("div",{style:{fontSize:10,color:C.textSec,lineHeight:1.4}},p.inverse_reason||"Low conviction score")))))),
+        lc.length>0&&React.createElement(Card,{style:{padding:20}},
+          React.createElement("div",{style:{marginBottom:14}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:"0 0 4px"}},"Component Predictive Power"),React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:0,lineHeight:1.6}},"Pearson correlation between each score component and "+period+"-day forward returns. ",React.createElement("strong",null,"Positive = component predicts gains; negative = contrarian or noisy.")," Use Auto-Calibrate to apply.")),
+          React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+            lc.map(item=>{const pct=Math.abs(item.alpha)*100,maxBar=200,barW=Math.min(100,pct*maxBar);const col=item.alpha>0.05?C.green:item.alpha<-0.02?C.red:C.textSec;return React.createElement("div",{key:item.name,style:{display:"grid",gridTemplateColumns:"140px 1fr 70px",alignItems:"center",gap:10}},React.createElement("span",{style:{fontSize:12,fontWeight:600,color:C.text}},item.name),React.createElement("div",{style:{height:8,background:C.border,borderRadius:4,overflow:"hidden"}},React.createElement("div",{style:{height:"100%",width:barW+"%",background:col,borderRadius:4,transition:"width .4s"}})),React.createElement("span",{style:{fontSize:12,fontFamily:mono,fontWeight:700,color:col,textAlign:"right"}},(item.alpha>=0?"+":"")+item.alpha.toFixed(3)))})),
+          React.createElement("p",{style:{fontSize:11,color:C.textTri,marginTop:12}},"Interpretation: >+0.10 = strong positive signal · -0.02 to +0.10 = neutral · <-0.02 = noisy or contrarian")),
+        ec.length>0&&React.createElement(Card,{style:{padding:20}},
+          React.createElement("div",{style:{marginBottom:14}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:"0 0 4px"}},"Earnings Entry Timing"),React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:0,lineHeight:1.6}},"Average returns when entering at different distances from earnings. ",React.createElement("strong",null,"Best window: "+bestWindow+"."))),
+          React.createElement(SvgGroupedBarChart,{data:ec,bars:[{key:"return14d",name:"14d Return",color:C.blue},{key:"return30d",name:"30d Return",color:C.purple}],labelKey:"name",height:200}),
+          React.createElement("div",{style:{display:"flex",gap:16,marginTop:10,flexWrap:"wrap"}},
+            ec.map(d=>React.createElement("div",{key:d.name,style:{padding:"6px 10px",background:C.bg,borderRadius:6,border:"1px solid "+C.border,fontSize:11}},React.createElement("div",{style:{fontWeight:700,marginBottom:2}},d.name),React.createElement("div",{style:{color:C.blue,fontFamily:mono}},"14d: "+(d.return14d>=0?"+":"")+d.return14d.toFixed(1)+"%"),React.createElement("div",{style:{color:C.purple,fontFamily:mono}},"30d: "+(d.return30d>=0?"+":"")+d.return30d.toFixed(1)+"%"),React.createElement("div",{style:{color:C.textTri,marginTop:2}},"n="+d.count))))),
+        React.createElement(Card,{style:{padding:20}},
+          React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}},
+            React.createElement("div",null,React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:"0 0 4px"}},"Weight Calibration Log"),React.createElement("p",{style:{fontSize:12,color:C.textSec,margin:0}},"History of all LT score weight adjustments made by Auto-Calibrate")),
+            React.createElement("button",{onClick:loadWH,style:{padding:"6px 14px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",background:C.bg,color:C.textSec,border:"1px solid "+C.border}},"↻ Refresh")),
+          ltHist.length===0&&React.createElement("div",{style:{padding:"20px 0",textAlign:"center",color:C.textSec,fontSize:13}},"No calibrations yet. Click Auto-Calibrate above to run the first one."),
+          ltHist.length>0&&React.createElement("div",{style:{overflowX:"auto"}},
+            React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:12}},
+              React.createElement("thead",null,React.createElement("tr",{style:{borderBottom:"2px solid "+C.border}},React.createElement("th",{style:{padding:"6px 8px",textAlign:"left",color:C.textSec,fontWeight:600}},"Date"),React.createElement("th",{style:{padding:"6px 8px",textAlign:"right",color:C.textSec,fontWeight:600}},"Corr"),React.createElement("th",{style:{padding:"6px 8px",textAlign:"right",color:C.textSec,fontWeight:600}},"Q-Spread"),ltKeys.map(k=>React.createElement("th",{key:k,style:{padding:"6px 8px",textAlign:"right",color:C.textSec,fontWeight:600,fontSize:10}},ltLabels[k]||k)))),
+              React.createElement("tbody",null,
+                ltHist.map((row,i)=>{const prev=ltHist[i+1];const w=row.weights||{},pw=prev?.weights||{};return React.createElement("tr",{key:row.id,style:{borderBottom:"1px solid "+C.border,background:i%2===0?C.bg:"transparent"}},
+                  React.createElement("td",{style:{padding:"6px 8px",color:C.textSec,whiteSpace:"nowrap"}},fmtCalRow(row.timestamp,tz)),
+                  React.createElement("td",{style:{padding:"6px 8px",textAlign:"right",fontFamily:mono,color:row.backtest_correlation!=null?(row.backtest_correlation>0.1?C.green:row.backtest_correlation<0?C.red:C.amber):C.textSec}},row.backtest_correlation!=null?row.backtest_correlation.toFixed(3):"—"),
+                  React.createElement("td",{style:{padding:"6px 8px",textAlign:"right",fontFamily:mono,color:row.backtest_quintile_spread!=null?(row.backtest_quintile_spread>2?C.green:C.amber):C.textSec}},row.backtest_quintile_spread!=null?row.backtest_quintile_spread.toFixed(1)+"%":"—"),
+                  ltKeys.map(k=>{const cur=w[k],prv=pw[k];const delta=cur!=null&&prv!=null?cur-prv:null;return React.createElement("td",{key:k,style:{padding:"6px 8px",textAlign:"right",fontFamily:mono}},cur!=null?React.createElement("span",null,cur,delta!=null&&delta!==0&&React.createElement("span",{style:{fontSize:10,color:delta>0?C.green:C.red,marginLeft:3}},(delta>0?"+":"")+delta)):"—")}))})))))
+        ,qc.length===0&&lc.length===0&&React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:36,marginBottom:12}},"📊"),React.createElement("div",{style:{fontSize:15,fontWeight:600,marginBottom:6}},"Not enough data yet"),React.createElement("div",{style:{fontSize:12,color:C.textSec,maxWidth:400,margin:"0 auto",lineHeight:1.7}},"The backtest engine needs scores from multiple days to measure predictive power.")));
+    }
+  }
+
+  // ── Watchlist section ──
+  let watchlistSection=null;
+  if(subTab==="watchlist"){
+    watchlistSection=React.createElement("div",{className:"fade-in",style:{display:"flex",flexDirection:"column",gap:20}},
+      React.createElement(Card,{style:{padding:20}},
+        React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:4}},"📌 Custom Watchlist"),
+        React.createElement("p",{style:{fontSize:12,color:C.textSec,marginBottom:16,lineHeight:1.6}},"Track any ticker — even those outside the standard universe. Watchlist tickers are automatically included in the next scan, news feed, and scoring pipeline."),
+        React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end"}},
+          React.createElement("div",{style:{flex:"0 0 120px"}},React.createElement("label",{style:{fontSize:10,fontWeight:600,color:C.textSec,display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"}},"Ticker"),React.createElement("input",{value:wlInput,onChange:e=>setWlInput(e.target.value.toUpperCase()),placeholder:"e.g. VZ",maxLength:10,onKeyDown:e=>e.key==="Enter"&&addTicker(),style:{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid "+C.border,fontSize:13,fontFamily:mono,fontWeight:700,background:C.bgCard,color:C.text}})),
+          React.createElement("div",{style:{flex:"0 0 100px"}},React.createElement("label",{style:{fontSize:10,fontWeight:600,color:C.textSec,display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"}},"Sector"),React.createElement("select",{value:wlSector,onChange:e=>setWlSector(e.target.value),style:{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid "+C.border,fontSize:12,background:C.bgCard,color:C.text}},["unknown","cyber","energy","defense","tech","finance","health"].map(s=>React.createElement("option",{key:s,value:s},s.charAt(0).toUpperCase()+s.slice(1))))),
+          React.createElement("div",{style:{flex:1,minWidth:140}},React.createElement("label",{style:{fontSize:10,fontWeight:600,color:C.textSec,display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:".04em"}},"Notes (optional)"),React.createElement("input",{value:wlNotes,onChange:e=>setWlNotes(e.target.value),placeholder:"Why tracking this...",style:{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid "+C.border,fontSize:12,background:C.bgCard,color:C.text}})),
+          React.createElement("button",{onClick:addTicker,disabled:wlSaving||!wlInput.trim(),style:{padding:"8px 18px",borderRadius:8,fontSize:13,fontWeight:600,cursor:wlSaving||!wlInput.trim()?"not-allowed":"pointer",background:C.blue,color:"#fff",border:"none",opacity:wlSaving||!wlInput.trim()?.6:1}},wlSaving?"Adding...":"+ Add")),
+        wlMsg&&React.createElement("div",{style:{marginTop:8,fontSize:12,color:wlMsg.startsWith("⏳")?C.amber:wlMsg.includes("Failed")?C.red:C.green}},wlMsg)),
+      wlItems===null&&React.createElement(Card,{style:{padding:32,textAlign:"center"}},React.createElement("div",{className:"pulse",style:{color:C.textSec,fontSize:13}},"Loading watchlist...")),
+      wlItems!==null&&wlItems.length===0&&React.createElement(Card,{style:{padding:32,textAlign:"center"}},React.createElement("div",{style:{fontSize:28,marginBottom:10}},"📌"),React.createElement("div",{style:{fontSize:14,fontWeight:600,marginBottom:6}},"Your watchlist is empty"),React.createElement("div",{style:{fontSize:12,color:C.textSec,maxWidth:400,margin:"0 auto",lineHeight:1.6}},"Add tickers above to track any stock. They'll be included in the next scan and scored alongside the standard universe.")),
+      wlItems!==null&&wlItems.length>0&&React.createElement(Card,{style:{padding:0,overflow:"hidden"}},
+        React.createElement("div",{style:{padding:"14px 20px",borderBottom:"1px solid "+C.border,display:"flex",alignItems:"center",justifyContent:"space-between"}},React.createElement("span",{style:{fontSize:13,fontWeight:700}},"Tracked Tickers"),React.createElement("span",{style:{fontSize:11,color:C.textSec}},wlItems.length+" ticker"+(wlItems.length!==1?"s":"")+" tracked")),
+        wlItems.map((item,i)=>{const hasS=item.has_scores;const ltC=item.lt_score>=60?C.green:item.lt_score>=35?C.amber:C.red;const optC=item.opt_score>=40?C.green:item.opt_score>=25?C.amber:C.red;return React.createElement("div",{key:item.ticker,style:{display:"grid",gridTemplateColumns:"60px 80px 1fr 90px 90px 80px 48px",alignItems:"center",gap:10,padding:"12px 20px",borderBottom:i<wlItems.length-1?"1px solid "+C.border:"none",background:i%2===0?"#fbfbfd":C.bgCard}},
+          React.createElement("span",{style:{fontSize:14,fontWeight:800,fontFamily:mono,color:C.text}},item.ticker),
+          React.createElement("span",{style:{fontSize:11,fontFamily:mono,color:C.textSec}},item.price?"$"+item.price:"No scan yet"),
+          React.createElement("div",null,React.createElement("span",{style:{fontSize:11,color:C.textSec,display:"block"}},item.sector!=="unknown"?item.sector.charAt(0).toUpperCase()+item.sector.slice(1):""),item.notes&&React.createElement("span",{style:{fontSize:10,color:C.textTri}},item.notes)),
+          hasS?React.createElement("div",{style:{display:"flex",alignItems:"center",gap:4}},React.createElement("span",{style:{fontSize:10,color:C.textSec,marginRight:2}},"LT"),React.createElement(ScoreBar,{score:item.lt_score})):React.createElement("span",{style:{fontSize:10,color:C.textTri}},"Pending scan"),
+          hasS?React.createElement("div",{style:{display:"flex",alignItems:"center",gap:4}},React.createElement("span",{style:{fontSize:10,color:C.textSec,marginRight:2}},"Opt"),React.createElement(ScoreBar,{score:item.opt_score})):null,
+          hasS&&item.outage_status==="outage"?React.createElement("span",{style:{fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:5,background:C.redBg,color:C.red,border:"1px solid "+C.redBorder}},"🔴 OUTAGE"):hasS&&item.outage_status==="degraded"?React.createElement("span",{style:{fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:5,background:"#fff8e1",color:C.amber,border:"1px solid #ffe082"}},"⚠ DEGRADED"):React.createElement("span",null),
+          React.createElement("button",{onClick:()=>removeTicker(item.ticker),style:{padding:"4px 10px",borderRadius:6,border:"1px solid "+C.redBorder,background:C.redBg,color:C.red,fontSize:10,fontWeight:600,cursor:"pointer"}},"✕"))})));
+  }
+
+  // ── Intel section ──
+  let intelSection=null;
+  if(subTab==="intel"){
+    intelSection=React.createElement("div",{className:"fade-in",style:{display:"flex",gap:20,alignItems:"flex-start"}},
+      React.createElement("div",{style:{flex:"0 0 55%",display:"flex",flexDirection:"column",gap:16}},
+        React.createElement(Card,{style:{padding:20}},
+          React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,margin:0}},"🛡 Cyber Threat Feed"),news&&React.createElement("span",{style:{fontSize:11,color:C.textSec}},fmtTimeOnly(news.fetched_at,tz))),
+          newsLoading&&React.createElement("div",{style:{color:C.textSec,fontSize:13,padding:"20px 0",textAlign:"center"}},"Fetching feeds..."),
+          !newsLoading&&(!news||!news.items||news.items.length===0)&&React.createElement("div",{style:{color:C.textSec,fontSize:13,textAlign:"center",padding:"20px 0"}},"No articles fetched. Check RSS sources."),
+          !newsLoading&&news&&news.items&&news.items.map((item,i)=>React.createElement("div",{key:i,style:{borderTop:i>0?"1px solid "+C.border:"none",paddingTop:i>0?12:0,marginTop:i>0?4:0}},
+            React.createElement("div",{style:{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:4}},React.createElement("a",{href:item.link,target:"_blank",rel:"noopener",style:{fontSize:13,fontWeight:600,color:C.blue,textDecoration:"none",lineHeight:1.4,flex:1}},item.title||"(no title)"),React.createElement("span",{style:{fontSize:10,color:C.textTri,whiteSpace:"nowrap",marginTop:2}},item.source)),
+            item.summary&&React.createElement("div",{style:{fontSize:11,color:C.textSec,lineHeight:1.5,marginBottom:5}},item.summary.slice(0,160)+(item.summary.length>160?"…":"")),
+            React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center"}},item.tags&&item.tags.slice(0,4).map(t=>React.createElement("span",{key:t,style:{fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:5,background:tagColors[t]||"#f5f5f5",color:tagTxtColors[t]||C.textSec,border:"1px solid "+(tagTxtColors[t]||C.textSec)+"30"}},t)),item.ticker_mentions&&item.ticker_mentions.length>0&&item.ticker_mentions.slice(0,5).map(tk=>React.createElement("span",{key:tk,style:{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:5,background:C.blueBg,color:C.blue,border:"1px solid "+C.blueBorder,fontFamily:mono}},tk))))))),
+      React.createElement("div",{style:{flex:"0 0 calc(45% - 20px)",display:"flex",flexDirection:"column",gap:16}},
+        React.createElement(Card,{style:{padding:20}},
+          React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:14}},"🔴 Service Status"),
+          outLoading&&React.createElement("div",{style:{color:C.textSec,fontSize:13,padding:"20px 0",textAlign:"center"}},"Checking status pages..."),
+          !outLoading&&outages&&outages.map(svc=>React.createElement("div",{key:svc.ticker,style:{padding:"10px 12px",background:statusBg[svc.status]||C.bgCard,border:"1px solid "+(statusBrd[svc.status]||C.border),borderRadius:10,marginBottom:8,display:"flex",alignItems:"center",gap:10}},
+            React.createElement("span",{style:{fontFamily:mono,fontSize:11,fontWeight:700,color:C.textSec,minWidth:36}},svc.ticker),
+            React.createElement("span",{style:{flex:1,fontSize:13,fontWeight:600,color:C.text}},svc.name),
+            svc.components_affected&&svc.components_affected.length>0&&React.createElement("span",{style:{fontSize:10,color:C.red,flex:1}},svc.components_affected.slice(0,2).join(", ")+(svc.components_affected.length>2?" +"+(svc.components_affected.length-2)+" more":"")),
+            React.createElement("span",{style:{fontSize:12,fontWeight:700,color:statusCol[svc.status]||C.textSec,display:"flex",alignItems:"center",gap:4}},React.createElement("span",{style:{fontSize:14}},statusIcon[svc.status]||"?"),svc.status||"unknown"))))));
+  }
+
+  return React.createElement("div",{className:"fade-in",style:{display:"flex",flexDirection:"column",gap:0}},
+    subPills,
+    subTab==="backtest"&&backtestSection,
+    subTab==="watchlist"&&watchlistSection,
+    subTab==="intel"&&intelSection);
+}
+
 // ─── App Shell ───
 function App(){
   const [tab,setTab]=useState("overview"),[stats,setStats]=useState(null),[latest,setLatest]=useState(null),[backtest,setBacktest]=useState(null),[scanStatus,setScanStatus]=useState(null),[online,setOnline]=useState(null),[playTicker,setPlayTicker]=useState(null);
@@ -783,18 +994,14 @@ function App(){
     online===false&&React.createElement("div",{style:{padding:"10px 28px",background:C.redBg,borderBottom:"1px solid "+C.redBorder,fontSize:12,color:C.red,fontWeight:500}},"API not reachable. Check server."),
     React.createElement("nav",{style:{padding:"8px 28px",display:"flex",gap:4,background:C.bg,flexWrap:"wrap"}},
       React.createElement(TB,{active:tab==="overview",onClick:()=>setTab("overview"),icon:"◉"},"Overview"),
-      React.createElement(TB,{active:tab==="scores",onClick:()=>setTab("scores"),icon:"◆"},"Scores"),
-      React.createElement(TB,{active:tab==="plays",onClick:()=>setTab("plays"),icon:"⚡"},"Plays"),
-      React.createElement(TB,{active:tab==="backtest",onClick:()=>setTab("backtest"),icon:"◈"},"Backtest"),
-      React.createElement(TB,{active:tab==="watchlist",onClick:()=>setTab("watchlist"),icon:"📌"},"Watchlist"),
-      React.createElement(TB,{active:tab==="intel",onClick:()=>setTab("intel"),icon:"🛡"},"Intel")),
+      React.createElement(TB,{active:tab==="scores",onClick:()=>setTab("scores"),icon:"📈"},"Long"),
+      React.createElement(TB,{active:tab==="plays",onClick:()=>setTab("plays"),icon:"⚡"},"Options"),
+      React.createElement(TB,{active:tab==="backtest",onClick:()=>setTab("backtest"),icon:"🔬"},"Research")),
     React.createElement("main",{style:{padding:"20px 28px",maxWidth:1360,margin:"0 auto"}},
       tab==="overview"&&React.createElement(OverviewTab,{stats,latest,onSelectPlay,tz}),
       tab==="scores"&&React.createElement(ScoresTab,{latest}),
       tab==="plays"&&React.createElement(PlaysTab,{latest,defaultTicker:playTicker,tz}),
-      tab==="backtest"&&React.createElement(BacktestTab,{backtest,tz}),
-      tab==="watchlist"&&React.createElement(WatchlistTab,null),
-      tab==="intel"&&React.createElement(IntelTab,{tz})),
+      tab==="backtest"&&React.createElement(ResearchTab,{backtest,tz})),
     React.createElement("footer",{style:{padding:"16px 28px",borderTop:"1px solid "+C.border,textAlign:"center"}},React.createElement("span",{style:{fontSize:10,color:C.textTri,fontWeight:500}},"Augur v3.1 — For research purposes only. Not financial advice.")));}
 ReactDOM.render(React.createElement(App),document.getElementById("root"));
 </script>
