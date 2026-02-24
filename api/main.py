@@ -28,10 +28,11 @@ from core.universe import (
     CYBER_UNIVERSE, ENERGY_UNIVERSE, DEFENSE_UNIVERSE,
     get_universe_by_sector, get_sector_summary, get_all_tickers,
     ALL_CYBER_TICKERS, ALL_ENERGY_TICKERS, ALL_DEFENSE_TICKERS,
+    ALL_BROAD_TICKERS,
     get_ticker_meta,
 )
-# Full multi-sector universe (cyber + energy + defense, deduplicated)
-ALL_TICKERS = sorted(list(set(ALL_CYBER_TICKERS + ALL_ENERGY_TICKERS + ALL_DEFENSE_TICKERS)))
+# Full multi-sector universe (cyber + energy + defense + broad S&P500/Nasdaq100, deduplicated)
+ALL_TICKERS = sorted(list(set(ALL_CYBER_TICKERS + ALL_ENERGY_TICKERS + ALL_DEFENSE_TICKERS + ALL_BROAD_TICKERS)))
 from db.models import (
     init_db, save_scan, get_score_history,
     get_all_scores_for_backtest, get_scan_count, get_db,
