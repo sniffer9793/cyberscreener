@@ -1704,15 +1704,17 @@ def get_momentum_signals(limit: int = Query(20, ge=5, le=100)):
 
 @app.post("/notify/test")
 def test_notification():
-    """Send a test email to verify SMTP configuration."""
+    """Send a test email to verify SendGrid configuration."""
     if not _NOTIFIER_AVAILABLE:
         return {"status": "unavailable", "message": "Notifier module not loaded"}
     try:
-        from intel.notifier import test_email
+        from intel.notifier import test_email, _ENABLED
+        if not _ENABLED:
+            return {"status": "disabled", "message": "Email not configured — set ALERT_EMAIL_TO, ALERT_EMAIL_FROM, SENDGRID_API_KEY"}
         sent = test_email()
         if sent:
             return {"status": "sent", "message": "Test email dispatched — check your inbox"}
-        return {"status": "disabled", "message": "Email not configured — set ALERT_EMAIL_TO, ALERT_EMAIL_FROM, GMAIL_APP_PASSWORD"}
+        return {"status": "error", "message": "Send failed — check logs (sender may need verification in SendGrid)"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
