@@ -929,16 +929,16 @@ def get_top_plays(limit: int = Query(5, ge=1, le=15)):
 
 
 @app.post("/plays/{ticker}/generate")
-def trigger_plays(ticker: str, background_tasks: BackgroundTasks):
+def trigger_plays(ticker: str, background_tasks: BackgroundTasks, force: bool = Query(False)):
     ticker = ticker.upper()
     if ticker not in ALL_TICKERS:
         raise HTTPException(status_code=404, detail=f"{ticker} not in universe")
 
-    if ticker in _plays_cache:
+    if not force and ticker in _plays_cache:
         cached = _plays_cache[ticker]
         try:
             age = (datetime.now() - datetime.fromisoformat(cached["timestamp"])).seconds
-            if age < 300:
+            if age < 90:
                 return {"status": "cached", "result": cached["data"]}
         except Exception:
             pass

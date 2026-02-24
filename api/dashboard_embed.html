@@ -376,20 +376,22 @@ function ScoresTab({latest}){
 
 // ─── Plays Tab ───
 function PlaysTab({latest,defaultTicker,tz}){
-  const [sel,setSel]=useState(null),[data,setData]=useState(null),[msg,setMsg]=useState(""),[showW,setShowW]=useState(false);
+  const [sel,setSel]=useState(null),[data,setData]=useState(null),[msg,setMsg]=useState(""),[showW,setShowW]=useState(false),[fetchedAt,setFetchedAt]=useState(null),[tick,setTick]=useState(0);
   const [showHist,setShowHist]=useState(false),[playHist,setPlayHist]=useState(null),[histLoading,setHistLoading]=useState(false);
   async function loadHistory(){if(playHist)return;setHistLoading(true);const d=await api("/plays/history/all?limit=50");if(d){setPlayHist(d)}setHistLoading(false);}
   // Auto-load if a ticker was passed from Killer Plays
   useEffect(()=>{if(defaultTicker&&defaultTicker!==sel)loadPlays(defaultTicker)},[defaultTicker]);
   const [ow,setOw]=useState({earnings_catalyst:25,iv_context:20,directional:20,technical:15,liquidity:10,asymmetry:10});
-  const poller=useRef(null),timer=useRef(null);
+  const poller=useRef(null),timer=useRef(null),autoRef=useRef(null);
   const results=latest?.results||[],opts=[...results].sort((a,b)=>b.opt_score-a.opt_score);
   useEffect(()=>{api("/weights").then(w=>{if(w?.active_weights?.opt)setOw(w.active_weights.opt)})},[]);
-  function cleanup(){if(poller.current)clearInterval(poller.current);if(timer.current)clearTimeout(timer.current);poller.current=timer.current=null}
-  async function loadPlays(t){cleanup();setSel(t);setData(null);setMsg("Starting...");
-    const d=await api("/plays/"+t+"/generate",{method:"POST"});if(!d){setData({ticker:t,plays:[],error:"Could not reach API"});return}
-    if(d.status==="cached"){setData(d.result);return}setMsg(d.message||"Working...");
-    poller.current=setInterval(async()=>{const s=await api("/plays/"+t+"/status");if(!s)return;if(s.status==="done"){cleanup();setData(s.result||{ticker:t,plays:[],error:"No data"})}else if(s.status==="running")setMsg(s.message||"Working...")},2000);
+  function cleanup(){if(poller.current)clearInterval(poller.current);if(timer.current)clearTimeout(timer.current);if(autoRef.current){clearInterval(autoRef.current);autoRef.current=null}poller.current=timer.current=null}
+  useEffect(()=>{const id=setInterval(()=>setTick(n=>n+1),20000);return ()=>clearInterval(id)},[]);
+  async function loadPlays(t,force=false){cleanup();setSel(t);if(!force)setData(null);setMsg("Starting...");
+    const d=await api("/plays/"+t+"/generate"+(force?"?force=true":""),{method:"POST"});if(!d){setData({ticker:t,plays:[],error:"Could not reach API"});return}
+    const gotData=r=>{setData(r);setFetchedAt(Date.now());if(!r.error&&r.plays?.length){autoRef.current=setInterval(()=>loadPlays(t,true),120000)}};
+    if(d.status==="cached"){gotData(d.result);return}setMsg(d.message||"Working...");
+    poller.current=setInterval(async()=>{const s=await api("/plays/"+t+"/status");if(!s)return;if(s.status==="done"){if(poller.current)clearInterval(poller.current);if(timer.current)clearTimeout(timer.current);poller.current=timer.current=null;gotData(s.result||{ticker:t,plays:[],error:"No data"})}else if(s.status==="running")setMsg(s.message||"Working...")},2000);
     timer.current=setTimeout(()=>{cleanup();setData(prev=>prev||{ticker:t,plays:[],error:"Timed out"})},45000)}
   useEffect(()=>()=>cleanup(),[]);
   function mc(lb,vl,cl){return React.createElement("div",{style:{padding:"10px 12px",background:C.bg,borderRadius:10}},React.createElement("div",{style:{fontSize:10,color:C.textSec,fontWeight:600,textTransform:"uppercase",letterSpacing:".03em",marginBottom:2}},lb),React.createElement("div",{style:{fontSize:15,fontWeight:700,fontFamily:mono,color:cl||C.text}},vl))}
@@ -447,7 +449,7 @@ function PlaysTab({latest,defaultTicker,tz}){
           "Opt score adjusted by "+(threatRow.threat_score-100)+"pts. ",
           React.createElement("strong",null,"Review Intel tab for details."))),
       React.createElement(Card,{style:{padding:20}},
-        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}},React.createElement("div",null,React.createElement("h2",{style:{fontSize:18,fontWeight:700}},p.ticker+" Options Intelligence"),React.createElement("p",{style:{fontSize:12,color:C.textSec}},playsRC.length+" play"+(playsRC.length!==1?"s":"")+" · sorted by reality check")),React.createElement("div",{style:{textAlign:"right"}},React.createElement("div",{style:{fontSize:26,fontWeight:700,fontFamily:mono}},"$"+p.price),React.createElement("div",{style:{fontSize:11,color:C.textSec}},fmtTimeOnly(p.timestamp,tz)))),
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}},React.createElement("div",null,React.createElement("h2",{style:{fontSize:18,fontWeight:700}},p.ticker+" Options Intelligence"),React.createElement("p",{style:{fontSize:12,color:C.textSec}},playsRC.length+" play"+(playsRC.length!==1?"s":"")+" · sorted by reality check")),React.createElement("div",{style:{textAlign:"right"}},React.createElement("div",{style:{fontSize:26,fontWeight:700,fontFamily:mono}},"$"+p.price),React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,justifyContent:"flex-end",marginTop:4}},fetchedAt&&React.createElement("span",{style:{fontSize:10,fontWeight:600,color:(Date.now()-fetchedAt)<30000?C.green:(Date.now()-fetchedAt)<90000?C.amber:C.red}},(Date.now()-fetchedAt)<10000?"● Live":(Date.now()-fetchedAt)<60000?Math.round((Date.now()-fetchedAt)/1000)+"s ago":Math.round((Date.now()-fetchedAt)/60000)+"m ago"),React.createElement("button",{onClick:e=>{e.stopPropagation();loadPlays(sel,true)},style:{fontSize:11,padding:"3px 10px",borderRadius:6,border:"1px solid "+C.border,background:C.bg,cursor:"pointer",color:C.blue,fontWeight:600}},"🔄 Refresh"),React.createElement("span",{style:{fontSize:11,color:C.textSec}},fmtTimeOnly(p.timestamp,tz))))),
         React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(100px,1fr))",gap:10,marginTop:14}},
           React.createElement(Metric,{label:"RSI",value:p.rsi!=null?Math.round(p.rsi):"—",color:p.rsi!=null?(p.rsi<30?C.green:p.rsi>70?C.red:C.amber):C.textSec,sub:p.rsi!=null?(p.rsi<30?"Oversold":p.rsi>70?"Overbought":"Neutral"):""}),
           React.createElement(Metric,{label:"IV 30d",value:p.iv_30d!=null?p.iv_30d+"%":"—",color:p.iv_30d!=null?(p.iv_30d>50?C.red:p.iv_30d>30?C.amber:C.green):C.textSec}),
