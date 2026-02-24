@@ -866,3 +866,19 @@ def get_all_augur_profiles(limit: int = 50) -> list:
     """, (limit,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def set_user_admin(user_id: int, is_admin: bool = True):
+    """Grant or revoke admin privileges."""
+    conn = get_db()
+    conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (1 if is_admin else 0, user_id))
+    conn.commit()
+    conn.close()
+
+
+def is_user_admin(user_id: int) -> bool:
+    """Check if user has admin flag."""
+    conn = get_db()
+    row = conn.execute("SELECT is_admin FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return bool(row and row["is_admin"])

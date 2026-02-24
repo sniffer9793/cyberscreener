@@ -989,8 +989,8 @@ function AuthModal({onAuth,onClose}){
       const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const d=await r.json();if(!r.ok)throw new Error(d.detail||"Failed");
       _setTokens(d.access_token,d.refresh_token);
-      localStorage.setItem('augur_user',JSON.stringify({id:d.user_id,augur_name:d.augur_name}));
-      onAuth({id:d.user_id,augur_name:d.augur_name,needs_augur_profile:d.needs_augur_profile});
+      localStorage.setItem('augur_user',JSON.stringify({id:d.user_id,augur_name:d.augur_name,is_admin:!!d.is_admin}));
+      onAuth({id:d.user_id,augur_name:d.augur_name,is_admin:!!d.is_admin,needs_augur_profile:d.needs_augur_profile});
     }catch(ex){setErr(ex.message)}finally{setLoading(false)}};
   const S={overlay:{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",backdropFilter:"blur(8px)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"},
     box:{background:"#fff",borderRadius:20,padding:32,width:380,maxWidth:"90vw",boxShadow:"0 20px 60px rgba(0,0,0,.2)"},
@@ -1077,7 +1077,7 @@ function App(){
   useEffect(()=>{(async()=>{const s=await api("/stats");if(s){setStats(s);setOnline(true)}else setOnline(false);const l=await api("/scores/latest?limit=600");if(l)setLatest(l);api("/backtest?days=180&forward_period=30").then(b=>{if(b)setBacktest(b)})})()},[]);
   // Navigate to Plays tab and auto-load a ticker (from Killer Plays widget)
   const onSelectPlay=useCallback(ticker=>{setPlayTicker(ticker);setTab("plays")},[]);
-  const triggerScan=async()=>{setScanStatus("running");await fetch("/scan",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});const poll=setInterval(async()=>{const s=await api("/scan/status");if(s&&!s.running){clearInterval(poll);setScanStatus("done");const ns=await api("/stats");if(ns)setStats(ns);const nl=await api("/scores/latest?limit=600");if(nl)setLatest(nl)}},3000)};
+  const triggerScan=async()=>{setScanStatus("running");const h={"Content-Type":"application/json"};const t=_getToken();if(t)h["Authorization"]="Bearer "+t;await fetch("/scan",{method:"POST",headers:h,body:"{}"});const poll=setInterval(async()=>{const s=await api("/scan/status");if(s&&!s.running){clearInterval(poll);setScanStatus("done");const ns=await api("/stats");if(ns)setStats(ns);const nl=await api("/scores/latest?limit=600");if(nl)setLatest(nl)}},3000)};
   const TB=({active,onClick,children,icon})=>React.createElement("button",{onClick,style:{padding:"8px 16px",background:active?"#fff":"transparent",border:"1px solid "+(active?C.border:"transparent"),borderRadius:10,color:active?C.text:C.textSec,fontSize:13,fontWeight:active?600:500,cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:active?C.shadow:"none"}},icon&&React.createElement("span",{style:{fontSize:13,opacity:.7}},icon),children);
   return React.createElement("div",{style:{minHeight:"100vh",background:C.bg}},
     React.createElement("header",{style:{padding:"14px 28px",borderBottom:"1px solid "+C.border,display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(255,255,255,.88)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",position:"sticky",top:0,zIndex:100}},
@@ -1095,7 +1095,7 @@ function App(){
         React.createElement("button",{onClick:()=>setShowAuth(true),style:{padding:"6px 14px",borderRadius:8,border:"1px solid "+C.purple+"40",background:C.purple+"10",color:C.purple,fontSize:11,fontWeight:600,cursor:"pointer"}},"⚔️ Sign In"),
         React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},React.createElement("div",{style:{width:7,height:7,borderRadius:"50%",background:online===true?C.green:online===false?C.red:C.amber,boxShadow:online===true?"0 0 6px "+C.green+"60":"none"}}),React.createElement("span",{style:{fontSize:11,color:C.textSec,fontWeight:500}},online===true?"Online":online===false?"Offline":"...")),
         React.createElement("select",{value:tz,onChange:e=>saveTz(e.target.value),title:"Timezone",style:{fontSize:11,borderRadius:7,border:"1px solid "+C.border,padding:"5px 8px",background:C.bgCard,color:C.textSec,cursor:"pointer",fontFamily:mono}},TZ_OPTIONS.map(o=>React.createElement("option",{key:o.value,value:o.value},o.label))),
-        React.createElement("button",{onClick:triggerScan,disabled:scanStatus==="running",style:{padding:"8px 18px",borderRadius:10,border:"1px solid "+(scanStatus==="running"?C.border:C.blue+"40"),background:scanStatus==="running"?"#f9f9f9":C.blueBg,color:scanStatus==="running"?C.textSec:C.blue,fontSize:12,fontWeight:600,cursor:scanStatus==="running"?"wait":"pointer",boxShadow:C.shadow}},scanStatus==="running"?"Scanning...":scanStatus==="done"?"✓ Done":"Run Scan"))),
+        authUser&&authUser.is_admin&&React.createElement("button",{onClick:triggerScan,disabled:scanStatus==="running",style:{padding:"8px 18px",borderRadius:10,border:"1px solid "+(scanStatus==="running"?C.border:C.blue+"40"),background:scanStatus==="running"?"#f9f9f9":C.blueBg,color:scanStatus==="running"?C.textSec:C.blue,fontSize:12,fontWeight:600,cursor:scanStatus==="running"?"wait":"pointer",boxShadow:C.shadow}},scanStatus==="running"?"Scanning...":scanStatus==="done"?"✓ Done":"Run Scan"))),
     online===false&&React.createElement("div",{style:{padding:"10px 28px",background:C.redBg,borderBottom:"1px solid "+C.redBorder,fontSize:12,color:C.red,fontWeight:500}},"API not reachable. Check server."),
     React.createElement("nav",{style:{padding:"8px 28px",display:"flex",gap:4,background:C.bg,flexWrap:"wrap"}},
       React.createElement(TB,{active:tab==="overview",onClick:()=>setTab("overview"),icon:"◉"},"Overview"),

@@ -67,6 +67,13 @@ def run_migration():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_refresh_token ON refresh_tokens(token_hash)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id)")
 
+    # ── Add is_admin column (idempotent) ──
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+        logger.info("Added is_admin column to users")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     conn.commit()
     conn.close()
     logger.info("✅ Augur migration complete (users, augur_profiles, refresh_tokens)")

@@ -58,6 +58,7 @@ from db.models import (
     create_augur_profile, get_augur_profile, get_augur_profile_by_id,
     update_augur_profile, save_refresh_token, validate_refresh_token,
     delete_refresh_token, delete_user_refresh_tokens, get_all_augur_profiles,
+    set_user_admin, is_user_admin,
 )
 from db.migrate_timing import run_migration as _run_timing_migration
 from db.migrate_sectors import run_migration as _run_sectors_migration
@@ -95,12 +96,13 @@ JWT_REFRESH_EXPIRE_DAYS = 30
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def _create_access_token(user_id: int, email: str, augur_name: str) -> str:
+def _create_access_token(user_id: int, email: str, augur_name: str, is_admin: bool = False) -> str:
     """Create a short-lived JWT access token (15 min)."""
     payload = {
         "user_id": user_id,
         "email": email,
         "augur_name": augur_name,
+        "is_admin": is_admin,
         "exp": datetime.utcnow() + timedelta(minutes=JWT_ACCESS_EXPIRE_MINUTES),
         "iat": datetime.utcnow(),
         "type": "access",
@@ -160,6 +162,29 @@ async def require_current_user(
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     return user
+
+
+async def require_admin(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    x_api_key: Optional[str] = Header(None),
+) -> dict:
+    """
+    Require admin access. Accepts either:
+    1. JWT from a user with is_admin=1
+    2. Legacy X-API-Key header matching API_PASSWORD hash (for backward compat)
+    """
+    # Try JWT first
+    if credentials:
+        user = await require_current_user(credentials)
+        if user.get("is_admin"):
+            return user
+        raise HTTPException(status_code=403, detail="Admin access required")
+    # Legacy API key fallback
+    if x_api_key:
+        expected = hashlib.sha256(API_PASSWORD.encode()).hexdigest()
+        if x_api_key == expected:
+            return {"id": 0, "augur_name": "admin", "is_admin": True, "email": "admin@local"}
+    raise HTTPException(status_code=403, detail="Admin access required. Sign in with an admin account.")
 
 
 # Allowed origins: production domain + local dev
@@ -357,7 +382,8 @@ def auth_login(req: LoginRequest):
     if not user or not _verify_password(req.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    access_token = _create_access_token(user["id"], user["email"], user["augur_name"])
+    _is_admin = bool(user.get("is_admin"))
+    access_token = _create_access_token(user["id"], user["email"], user["augur_name"], _is_admin)
     refresh_token = _create_refresh_token(user["id"])
     update_user_last_login(user["id"])
 
@@ -367,6 +393,7 @@ def auth_login(req: LoginRequest):
     return {
         "user_id": user["id"],
         "augur_name": user["augur_name"],
+        "is_admin": _is_admin,
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
@@ -391,7 +418,7 @@ def auth_refresh(req: RefreshRequest):
 
     # Rotate: delete old token, issue new pair
     delete_refresh_token(token_hash)
-    access_token = _create_access_token(user["id"], user["email"], user["augur_name"])
+    access_token = _create_access_token(user["id"], user["email"], user["augur_name"], bool(user.get("is_admin")))
     new_refresh = _create_refresh_token(user["id"])
 
     return {
@@ -409,6 +436,7 @@ async def auth_me(user: dict = Depends(require_current_user)):
         "user_id": user["id"],
         "email": user["email"],
         "augur_name": user["augur_name"],
+        "is_admin": bool(user.get("is_admin")),
         "created_at": user["created_at"],
         "last_login": user["last_login"],
         "has_augur_profile": profile is not None,
@@ -441,6 +469,16 @@ async def auth_logout(
     token_hash = hashlib.sha256(req.refresh_token.encode()).hexdigest()
     delete_refresh_token(token_hash)
     return {"status": "logged_out"}
+
+
+@app.post("/admin/promote/{user_id}")
+async def promote_user(user_id: int, admin: dict = Depends(require_admin)):
+    """Grant admin privileges to a user. Admin only."""
+    target = get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    set_user_admin(user_id, True)
+    return {"status": "promoted", "user_id": user_id, "augur_name": target["augur_name"]}
 
 
 # ── Augur Character Endpoints ──────────────────────────────────────────────────
@@ -672,7 +710,7 @@ def health():
 _backfill_status = {"running": False, "message": "idle"}
 
 @app.post("/backfill")
-def trigger_backfill(background_tasks: BackgroundTasks, months: int = Query(6, ge=1, le=12)):
+def trigger_backfill(background_tasks: BackgroundTasks, months: int = Query(6, ge=1, le=12), admin: dict = Depends(require_admin)):
     if _backfill_status["running"]:
         return {"status": "busy", "message": _backfill_status["message"]}
     background_tasks.add_task(_run_backfill_background, months)
@@ -932,7 +970,7 @@ def get_tickers():
     return {"universe": CYBER_UNIVERSE, "all_tickers": ALL_TICKERS, "total": len(ALL_TICKERS)}
 
 @app.post("/scan", response_model=ScanStatus)
-def trigger_scan(req: ScanRequest, background_tasks: BackgroundTasks):
+def trigger_scan(req: ScanRequest, background_tasks: BackgroundTasks, admin: dict = Depends(require_admin)):
     if not _check_rate_limit("scan", max_calls=5, window_seconds=300):
         raise HTTPException(status_code=429, detail="Too many scan requests. Try again in 5 minutes.")
     if _scan_status["running"]:
@@ -1189,8 +1227,9 @@ def trigger_calibration(
     days: int = Query(180, ge=30, le=365),
     forward_period: int = Query(30, ge=7, le=90),
     dry_run: bool = Query(False),
+    admin: dict = Depends(require_admin),
 ):
-    """Auto-adjust scoring weights based on backtest data."""
+    """Auto-adjust scoring weights based on backtest data. Admin only."""
     return calibrate_weights(days, forward_period, dry_run=dry_run)
 
 @app.get("/weights")
@@ -1215,8 +1254,8 @@ def get_current_weights():
     }
 
 @app.post("/weights/reset")
-def reset_weights():
-    """Reset weights to defaults."""
+def reset_weights(admin: dict = Depends(require_admin)):
+    """Reset weights to defaults. Admin only."""
     set_weights(lt_weights=DEFAULT_LT_WEIGHTS, opt_weights=DEFAULT_OPT_WEIGHTS)
     return {"status": "reset", "weights": get_weights()}
 
@@ -1511,7 +1550,7 @@ def plays_open_tracked():
 # ─── Timing Debug Endpoints ───
 
 @app.get("/debug/timing/{ticker}")
-def debug_timing(ticker: str):
+def debug_timing(ticker: str, admin: dict = Depends(require_admin)):
     """
     Test timing intelligence for a single ticker without running a full scan.
     Shows horizon classification, expiry selection, and all inputs used.
@@ -1593,7 +1632,7 @@ def debug_timing(ticker: str):
 
 
 @app.get("/debug/timing-full/{ticker}")
-def debug_timing_full(ticker: str):
+def debug_timing_full(ticker: str, admin: dict = Depends(require_admin)):
     """
     Run a single-ticker full scan and return timing intelligence alongside all scores.
     Slower (~10s) but shows real lt_score/opt_score feeding into timing.
@@ -1664,15 +1703,11 @@ class EarningsSetRequest(BaseModel):
     password: str
 
 @app.post("/earnings/seed")
-def earnings_seed(req: EarningsSeedRequest):
-    if req.password != API_PASSWORD:
-        raise HTTPException(status_code=401, detail="Invalid password")
+def earnings_seed(req: EarningsSeedRequest, admin: dict = Depends(require_admin)):
     return seed_from_payload(req.dates)
 
 @app.post("/earnings/set")
-def earnings_set(req: EarningsSetRequest):
-    if req.password != API_PASSWORD:
-        raise HTTPException(status_code=401, detail="Invalid password")
+def earnings_set(req: EarningsSetRequest, admin: dict = Depends(require_admin)):
     try:
         d = datetime.strptime(req.date[:10], "%Y-%m-%d").date()
         ok = save_earnings_date(req.ticker.upper(), d, source="manual_override", report_time=req.report_time)
@@ -2191,8 +2226,8 @@ def get_momentum_signals(limit: int = Query(20, ge=5, le=100)):
 # ── Test notification endpoint ─────────────────────────────────────────────────
 
 @app.post("/notify/test")
-def test_notification():
-    """Send a test email to verify SendGrid configuration."""
+def test_notification(admin: dict = Depends(require_admin)):
+    """Send a test email to verify SendGrid configuration. Admin only."""
     if not _NOTIFIER_AVAILABLE:
         return {"status": "unavailable", "message": "Notifier module not loaded"}
     try:
@@ -2324,7 +2359,7 @@ def _send_email(subject: str, body_html: str) -> bool:
 
 
 @app.post("/alerts/send-killer-plays")
-def send_killer_plays_alert():
+def send_killer_plays_alert(admin: dict = Depends(require_admin)):
     """Fetch killer plays and send an email alert."""
     if not _check_rate_limit("email_alert", max_calls=3, window_seconds=3600):
         raise HTTPException(status_code=429, detail="Email alert rate limit: max 3/hour")
@@ -2383,8 +2418,8 @@ def send_killer_plays_alert():
 
 
 @app.get("/alerts/config")
-def get_alert_config():
-    """Check email alert configuration status."""
+def get_alert_config(admin: dict = Depends(require_admin)):
+    """Check email alert configuration status. Admin only."""
     return {
         "configured": bool(SMTP_HOST and SMTP_USER and SMTP_PASS and ALERT_EMAIL),
         "smtp_host": SMTP_HOST or "(not set)",
