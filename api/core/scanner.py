@@ -31,11 +31,12 @@ try:
         ALL_CYBER_TICKERS as _CYB,
         ALL_ENERGY_TICKERS as _ENR,
         ALL_DEFENSE_TICKERS as _DEF,
+        ALL_BROAD_TICKERS as _BRD,
     )
     _UNIVERSE_IMPORTED = True
 except ImportError:
     _get_ticker_meta = lambda t: {"sector": "cyber", "subsector": "", "scoring_profile": "saas"}
-    _CYB, _ENR, _DEF = [], [], []
+    _CYB, _ENR, _DEF, _BRD = [], [], [], []
     _UNIVERSE_IMPORTED = False
 
 try:
@@ -96,7 +97,7 @@ _CYBER_FALLBACK = sorted(list(set(t for tickers in CYBER_UNIVERSE.values() for t
 
 # Use full multi-sector universe when universe.py is available
 if _UNIVERSE_IMPORTED and (_CYB or _ENR or _DEF):
-    ALL_TICKERS = sorted(list(set(_CYB + _ENR + _DEF)))
+    ALL_TICKERS = sorted(list(set(_CYB + _ENR + _DEF + _BRD)))
 else:
     ALL_TICKERS = _CYBER_FALLBACK
 
