@@ -487,7 +487,7 @@ def scan_status():
     return _scan_status
 
 @app.get("/scores/latest")
-def get_latest_scores(limit: int = Query(100, ge=1, le=200)):
+def get_latest_scores(limit: int = Query(100, ge=1, le=600)):
     """
     Return the most recent score for each ticker across all scans.
     Uses a per-ticker max(scan_id) join so partial scans (e.g. 5-ticker
