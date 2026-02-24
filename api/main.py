@@ -9,14 +9,27 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from fastapi import FastAPI, BackgroundTasks, Query, Header, HTTPException
+from fastapi import FastAPI, BackgroundTasks, Query, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import hashlib
+import secrets
 import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+try:
+    import jwt as pyjwt
+    import bcrypt
+    _AUTH_AVAILABLE = True
+except ImportError:
+    _AUTH_AVAILABLE = False
+    logger.warning("pyjwt/bcrypt not installed — auth endpoints disabled")
 
 from core.scanner import (
     run_scan,
@@ -40,6 +53,11 @@ from db.models import (
     get_watchlist, add_to_watchlist, remove_from_watchlist, get_watchlist_tickers,
     # P2: P&L tracking
     log_play, get_open_plays, close_play, get_play_history, get_play_stats,
+    # P4: User auth + Augur profiles
+    create_user, get_user_by_email, get_user_by_id, update_user_last_login,
+    create_augur_profile, get_augur_profile, get_augur_profile_by_id,
+    update_augur_profile, save_refresh_token, validate_refresh_token,
+    delete_refresh_token, delete_user_refresh_tokens, get_all_augur_profiles,
 )
 from db.migrate_timing import run_migration as _run_timing_migration
 from db.migrate_sectors import run_migration as _run_sectors_migration
@@ -47,6 +65,7 @@ from db.migrate_threat import run_migration as _run_threat_migration
 from db.migrate_watchlist import run_migration as _run_watchlist_migration
 from db.migrate_options_plays import run_migration as _run_options_plays_migration
 from db.migrate_short_delta import run_migration as _run_short_delta_migration
+from db.migrate_augur import run_migration as _run_augur_migration
 try:
     from intel.notifier import notify_high_rc_play as _notify_high_rc_play
     _NOTIFIER_AVAILABLE = True
@@ -60,8 +79,88 @@ from backtest.engine import (
     backtest_earnings_timing,
     calibrate_weights,
 )
+from core.augur_weights import (
+    validate_attributes, compute_user_weights, describe_augur,
+    rescore_with_user_weights, ATTRIBUTES, ATTRIBUTE_POOL,
+)
 
 API_PASSWORD = os.environ.get("CYBERSCREENER_PASSWORD", "cybershield2026")
+
+# ── JWT Configuration ─────────────────────────────────────────────────────────
+JWT_SECRET = os.environ.get("JWT_SECRET", secrets.token_hex(32))
+JWT_ALGORITHM = "HS256"
+JWT_ACCESS_EXPIRE_MINUTES = 15
+JWT_REFRESH_EXPIRE_DAYS = 30
+
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _create_access_token(user_id: int, email: str, augur_name: str) -> str:
+    """Create a short-lived JWT access token (15 min)."""
+    payload = {
+        "user_id": user_id,
+        "email": email,
+        "augur_name": augur_name,
+        "exp": datetime.utcnow() + timedelta(minutes=JWT_ACCESS_EXPIRE_MINUTES),
+        "iat": datetime.utcnow(),
+        "type": "access",
+    }
+    return pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def _create_refresh_token(user_id: int) -> str:
+    """Create a long-lived refresh token (30 days). Stored hashed in DB."""
+    raw_token = secrets.token_urlsafe(48)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    expires_at = (datetime.utcnow() + timedelta(days=JWT_REFRESH_EXPIRE_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+    save_refresh_token(user_id, token_hash, expires_at)
+    return raw_token
+
+
+def _hash_password(password: str) -> str:
+    """Hash a password with bcrypt."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _verify_password(password: str, hashed: str) -> bool:
+    """Verify a password against bcrypt hash."""
+    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+
+
+async def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+) -> Optional[dict]:
+    """
+    JWT auth dependency. Returns user dict if valid token provided, None if no token.
+    Raises 401 if token is present but invalid/expired.
+    """
+    if not _AUTH_AVAILABLE:
+        return None
+    if credentials is None:
+        return None
+    try:
+        payload = pyjwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        user = get_user_by_id(payload["user_id"])
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except pyjwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+async def require_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+) -> dict:
+    """Like get_current_user but raises 401 if not authenticated."""
+    user = await get_current_user(credentials)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user
+
 
 # Allowed origins: production domain + local dev
 _ALLOWED_ORIGINS = [
@@ -71,13 +170,13 @@ _ALLOWED_ORIGINS = [
     "http://localhost:3000",
 ]
 
-app = FastAPI(title="Augur API", version="3.1.0")
+app = FastAPI(title="Augur API", version="4.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type", "X-API-Key"],
-    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
+    allow_credentials=True,
 )
 
 # ── Simple in-memory rate limiter ──────────────────────────────────────────────
@@ -125,6 +224,11 @@ try:
     print("✅ Short delta migration complete")
 except Exception as _me:
     print(f"Short delta migration warning: {_me}")
+try:
+    _run_augur_migration()
+    print("✅ Augur migration complete")
+except Exception as _me:
+    print(f"Augur migration warning: {_me}")
 
 # Load saved weights if available
 def _load_saved_weights():
@@ -175,6 +279,389 @@ def authenticate(req: AuthRequest):
         token = hashlib.sha256(API_PASSWORD.encode()).hexdigest()
         return {"authenticated": True, "token": token}
     raise HTTPException(status_code=401, detail="Wrong password")
+
+
+# ── JWT Auth Endpoints ─────────────────────────────────────────────────────────
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+    augur_name: str = Field(..., min_length=2, max_length=24)
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+class AugurCreateRequest(BaseModel):
+    prudentia: int = Field(..., ge=1, le=10)
+    audacia: int = Field(..., ge=1, le=10)
+    sapientia: int = Field(..., ge=1, le=10)
+    fortuna: int = Field(..., ge=1, le=10)
+    prospectus: int = Field(..., ge=1, le=10)
+    liquiditas: int = Field(..., ge=1, le=10)
+
+class AugurRespecRequest(BaseModel):
+    prudentia: int = Field(..., ge=1, le=10)
+    audacia: int = Field(..., ge=1, le=10)
+    sapientia: int = Field(..., ge=1, le=10)
+    fortuna: int = Field(..., ge=1, le=10)
+    prospectus: int = Field(..., ge=1, le=10)
+    liquiditas: int = Field(..., ge=1, le=10)
+
+
+@app.post("/auth/register")
+def auth_register(req: RegisterRequest):
+    """Register a new Augur account."""
+    if not _AUTH_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Auth not available (pyjwt/bcrypt not installed)")
+    if not _check_rate_limit("register", max_calls=5, window_seconds=3600):
+        raise HTTPException(status_code=429, detail="Registration rate limit exceeded")
+
+    # Hash password + create user
+    pw_hash = _hash_password(req.password)
+    try:
+        import sqlite3 as _sqlite3
+        user_id = create_user(req.email, pw_hash, req.augur_name)
+    except Exception as e:
+        if "UNIQUE" in str(e).upper():
+            raise HTTPException(status_code=409, detail="Email or Augur name already taken")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Generate tokens
+    access_token = _create_access_token(user_id, req.email, req.augur_name)
+    refresh_token = _create_refresh_token(user_id)
+    update_user_last_login(user_id)
+
+    return {
+        "user_id": user_id,
+        "augur_name": req.augur_name,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "needs_augur_profile": True,
+    }
+
+
+@app.post("/auth/login")
+def auth_login(req: LoginRequest):
+    """Login with email + password. Returns JWT tokens."""
+    if not _AUTH_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Auth not available")
+    if not _check_rate_limit(f"login:{req.email}", max_calls=10, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Too many login attempts")
+
+    user = get_user_by_email(req.email)
+    if not user or not _verify_password(req.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    access_token = _create_access_token(user["id"], user["email"], user["augur_name"])
+    refresh_token = _create_refresh_token(user["id"])
+    update_user_last_login(user["id"])
+
+    # Check if user has an Augur profile
+    profile = get_augur_profile(user["id"])
+
+    return {
+        "user_id": user["id"],
+        "augur_name": user["augur_name"],
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "needs_augur_profile": profile is None,
+    }
+
+
+@app.post("/auth/refresh")
+def auth_refresh(req: RefreshRequest):
+    """Exchange a refresh token for a new access token."""
+    if not _AUTH_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Auth not available")
+
+    token_hash = hashlib.sha256(req.refresh_token.encode()).hexdigest()
+    record = validate_refresh_token(token_hash)
+    if not record:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    user = get_user_by_id(record["user_id"])
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    # Rotate: delete old token, issue new pair
+    delete_refresh_token(token_hash)
+    access_token = _create_access_token(user["id"], user["email"], user["augur_name"])
+    new_refresh = _create_refresh_token(user["id"])
+
+    return {
+        "access_token": access_token,
+        "refresh_token": new_refresh,
+        "token_type": "bearer",
+    }
+
+
+@app.get("/auth/me")
+async def auth_me(user: dict = Depends(require_current_user)):
+    """Get current user profile + Augur attributes."""
+    profile = get_augur_profile(user["id"])
+    result = {
+        "user_id": user["id"],
+        "email": user["email"],
+        "augur_name": user["augur_name"],
+        "created_at": user["created_at"],
+        "last_login": user["last_login"],
+        "has_augur_profile": profile is not None,
+    }
+    if profile:
+        desc = describe_augur(profile)
+        result["augur"] = {
+            "prudentia": profile["prudentia"],
+            "audacia": profile["audacia"],
+            "sapientia": profile["sapientia"],
+            "fortuna": profile["fortuna"],
+            "prospectus": profile["prospectus"],
+            "liquiditas": profile["liquiditas"],
+            "avatar_seed": profile.get("avatar_seed"),
+            "title": profile.get("title", "Novice Augur"),
+            "xp": profile.get("xp", 0),
+            "level": profile.get("level", 1),
+            "dominant_trait": desc["dominant_trait"],
+            "style": desc["style"],
+        }
+    return result
+
+
+@app.post("/auth/logout")
+async def auth_logout(
+    req: RefreshRequest,
+    user: dict = Depends(require_current_user),
+):
+    """Invalidate a refresh token."""
+    token_hash = hashlib.sha256(req.refresh_token.encode()).hexdigest()
+    delete_refresh_token(token_hash)
+    return {"status": "logged_out"}
+
+
+# ── Augur Character Endpoints ──────────────────────────────────────────────────
+
+@app.post("/augur/create")
+async def augur_create(req: AugurCreateRequest, user: dict = Depends(require_current_user)):
+    """Create your Augur character. Attributes must sum to 36."""
+    attrs = req.model_dump()
+    valid, err = validate_attributes(attrs)
+    if not valid:
+        raise HTTPException(status_code=422, detail=err)
+
+    # Check if already has a profile
+    existing = get_augur_profile(user["id"])
+    if existing:
+        raise HTTPException(status_code=409, detail="Augur profile already exists. Use PUT /augur/respec to change.")
+
+    profile_id = create_augur_profile(user["id"], attrs)
+    desc = describe_augur(attrs)
+
+    # Compute personalized weights preview
+    lt_w, opt_w = compute_user_weights(attrs, DEFAULT_LT_WEIGHTS, DEFAULT_OPT_WEIGHTS)
+
+    return {
+        "profile_id": profile_id,
+        "augur_name": user["augur_name"],
+        "attributes": attrs,
+        "dominant_trait": desc["dominant_trait"],
+        "title": desc["title_suggestion"],
+        "style": desc["style"],
+        "lt_weights": lt_w,
+        "opt_weights": opt_w,
+    }
+
+
+@app.put("/augur/respec")
+async def augur_respec(req: AugurRespecRequest, user: dict = Depends(require_current_user)):
+    """Respec your Augur character (change attributes). Limited to 1 per week."""
+    attrs = req.model_dump()
+    valid, err = validate_attributes(attrs)
+    if not valid:
+        raise HTTPException(status_code=422, detail=err)
+
+    profile = get_augur_profile(user["id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="No Augur profile. Create one first via POST /augur/create.")
+
+    # Rate-limit respec to 1/week
+    if profile.get("last_respec"):
+        last = datetime.strptime(profile["last_respec"], "%Y-%m-%d %H:%M:%S")
+        if (datetime.now() - last).days < 7:
+            days_left = 7 - (datetime.now() - last).days
+            raise HTTPException(status_code=429, detail=f"Respec available in {days_left} day(s)")
+
+    update_augur_profile(user["id"], attrs)
+    desc = describe_augur(attrs)
+    lt_w, opt_w = compute_user_weights(attrs, DEFAULT_LT_WEIGHTS, DEFAULT_OPT_WEIGHTS)
+
+    return {
+        "augur_name": user["augur_name"],
+        "attributes": attrs,
+        "dominant_trait": desc["dominant_trait"],
+        "title": desc["title_suggestion"],
+        "style": desc["style"],
+        "lt_weights": lt_w,
+        "opt_weights": opt_w,
+    }
+
+
+@app.get("/augur/profile")
+async def augur_profile_me(user: dict = Depends(require_current_user)):
+    """Get your full Augur profile with computed weight biases."""
+    profile = get_augur_profile(user["id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="No Augur profile created yet")
+
+    desc = describe_augur(profile)
+    lt_w, opt_w = compute_user_weights(profile, DEFAULT_LT_WEIGHTS, DEFAULT_OPT_WEIGHTS)
+
+    return {
+        "user_id": user["id"],
+        "augur_name": user["augur_name"],
+        "attributes": {a: profile[a] for a in ATTRIBUTES},
+        "avatar_seed": profile.get("avatar_seed"),
+        "title": profile.get("title", "Novice Augur"),
+        "xp": profile.get("xp", 0),
+        "level": profile.get("level", 1),
+        "dominant_trait": desc["dominant_trait"],
+        "style": desc["style"],
+        "lt_weights": lt_w,
+        "opt_weights": opt_w,
+        "base_lt_weights": DEFAULT_LT_WEIGHTS,
+        "base_opt_weights": DEFAULT_OPT_WEIGHTS,
+    }
+
+
+@app.get("/augur/{profile_id}")
+async def augur_public_profile(profile_id: int):
+    """Public Augur profile view (for community)."""
+    profile = get_augur_profile_by_id(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Augur not found")
+
+    desc = describe_augur(profile)
+    return {
+        "augur_name": profile.get("augur_name", "Unknown"),
+        "attributes": {a: profile[a] for a in ATTRIBUTES},
+        "title": profile.get("title", "Novice Augur"),
+        "xp": profile.get("xp", 0),
+        "level": profile.get("level", 1),
+        "dominant_trait": desc["dominant_trait"],
+        "style": desc["style"],
+        "avatar_seed": profile.get("avatar_seed"),
+    }
+
+
+@app.get("/augur/leaderboard/top")
+async def augur_leaderboard(limit: int = Query(20, ge=1, le=100)):
+    """Get top Augur profiles by XP."""
+    profiles = get_all_augur_profiles(limit=limit)
+    return {
+        "augurs": [
+            {
+                "augur_name": p.get("augur_name"),
+                "title": p.get("title", "Novice Augur"),
+                "xp": p.get("xp", 0),
+                "level": p.get("level", 1),
+                "dominant_trait": describe_augur(p)["dominant_trait"],
+                "avatar_seed": p.get("avatar_seed"),
+            }
+            for p in profiles
+        ],
+        "total": len(profiles),
+    }
+
+
+# ── Personalized Scores ───────────────────────────────────────────────────────
+
+@app.get("/scores/latest/personalized")
+async def get_personalized_scores(
+    limit: int = Query(100, ge=1, le=600),
+    user: dict = Depends(require_current_user),
+):
+    """
+    Returns latest scores re-weighted by the user's Augur attributes.
+    Each ticker includes both system scores and personalized scores.
+    """
+    profile = get_augur_profile(user["id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="Create your Augur profile first")
+
+    # Get user's personalized weights
+    user_lt_w, user_opt_w = compute_user_weights(profile, DEFAULT_LT_WEIGHTS, DEFAULT_OPT_WEIGHTS)
+
+    # Fetch latest system scores
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT s.* FROM scores s
+        INNER JOIN (
+            SELECT ticker, MAX(id) as max_id FROM scores GROUP BY ticker
+        ) latest ON s.id = latest.max_id
+        ORDER BY s.lt_score DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+
+    results = []
+    for row in rows:
+        r = dict(row)
+        ticker = r["ticker"]
+
+        # Extract raw 0-1 scores from breakdown JSON
+        lt_raw = {}
+        opt_raw = {}
+        try:
+            lt_bd = json.loads(r.get("lt_breakdown") or "{}")
+            for comp, data in lt_bd.items():
+                if isinstance(data, dict) and "raw" in data:
+                    lt_raw[comp] = data["raw"]
+                elif isinstance(data, dict) and "points" in data and "max" in data and data["max"] > 0:
+                    lt_raw[comp] = data["points"] / data["max"]  # backward compat
+        except (json.JSONDecodeError, TypeError):
+            pass
+        try:
+            opt_bd = json.loads(r.get("opt_breakdown") or "{}")
+            for comp, data in opt_bd.items():
+                if isinstance(data, dict) and "raw" in data:
+                    opt_raw[comp] = data["raw"]
+                elif isinstance(data, dict) and "points" in data and "max" in data and data["max"] > 0:
+                    opt_raw[comp] = data["points"] / data["max"]
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Recompute personalized scores
+        user_lt_score = rescore_with_user_weights(lt_raw, user_lt_w) if lt_raw else r.get("lt_score", 0)
+        user_opt_score = rescore_with_user_weights(opt_raw, user_opt_w) if opt_raw else r.get("opt_score", 0)
+
+        results.append({
+            "ticker": ticker,
+            "sector": r.get("sector"),
+            "lt_score": r.get("lt_score", 0),
+            "opt_score": r.get("opt_score", 0),
+            "user_lt_score": user_lt_score,
+            "user_opt_score": user_opt_score,
+            "lt_delta": round(user_lt_score - (r.get("lt_score") or 0), 1),
+            "opt_delta": round(user_opt_score - (r.get("opt_score") or 0), 1),
+            "price": r.get("price"),
+            "rsi": r.get("rsi"),
+            "scanned_at": r.get("scanned_at"),
+        })
+
+    # Sort by user LT score
+    results.sort(key=lambda x: x["user_lt_score"], reverse=True)
+
+    return {
+        "augur_name": user["augur_name"],
+        "dominant_trait": describe_augur(profile)["dominant_trait"],
+        "count": len(results),
+        "scores": results,
+    }
+
 
 @app.get("/health")
 def health():

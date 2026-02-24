@@ -706,7 +706,7 @@ def score_long_term(row, weights=None):
         reasons.append(f"⚠️ Rule of 40: {rule_of_40:.0f} (negative — shrinking inefficiently)")
 
     pts = _score_component(raw, w["rule_of_40"])
-    breakdown["rule_of_40"] = {"points": pts, "max": w["rule_of_40"], "raw_value": round(rule_of_40, 1)}
+    breakdown["rule_of_40"] = {"points": pts, "max": w["rule_of_40"], "raw_value": round(rule_of_40, 1), "raw": round(raw, 4)}
     score += pts
 
     # ── 2. RELATIVE VALUATION (EV/Revenue relative to growth) ──
@@ -734,7 +734,7 @@ def score_long_term(row, weights=None):
             reasons.append(f"💸 Expensive: {ev_rev:.1f}x EV/Rev")
 
     pts = _score_component(raw, w["valuation"])
-    breakdown["valuation"] = {"points": pts, "max": w["valuation"], "raw_value": round(ev_rev, 1)}
+    breakdown["valuation"] = {"points": pts, "max": w["valuation"], "raw_value": round(ev_rev, 1), "raw": round(raw, 4)}
     score += pts
 
     # ── 3. FCF MARGIN (cash generation efficiency, not absolute) ──
@@ -766,7 +766,7 @@ def score_long_term(row, weights=None):
 
     pts = _score_component(raw, w["fcf_margin"])
     breakdown["fcf_margin"] = {"points": pts, "max": w["fcf_margin"],
-                                "raw_value": fcf_margin if fcf_margin is not None else None}
+                                "raw_value": fcf_margin if fcf_margin is not None else None, "raw": round(raw, 4)}
     score += pts
 
     # ── 4. TECHNICAL TREND (SMA positioning) ──
@@ -815,7 +815,7 @@ def score_long_term(row, weights=None):
         reasons.append("📉 Below key moving averages — weak trend")
 
     pts = _score_component(raw, w["trend"])
-    breakdown["trend"] = {"points": pts, "max": w["trend"], "raw_value": round(trend_score, 1)}
+    breakdown["trend"] = {"points": pts, "max": w["trend"], "raw_value": round(trend_score, 1), "raw": round(raw, 4)}
     score += pts
 
     # ── 5. EARNINGS QUALITY (positive EPS, good margins) ──
@@ -845,7 +845,7 @@ def score_long_term(row, weights=None):
     raw = min(1.0, quality_raw)
 
     pts = _score_component(raw, w["earnings_quality"])
-    breakdown["earnings_quality"] = {"points": pts, "max": w["earnings_quality"]}
+    breakdown["earnings_quality"] = {"points": pts, "max": w["earnings_quality"], "raw": round(raw, 4)}
     score += pts
 
     # ── 6. DISCOUNT + MOMENTUM ──
@@ -894,7 +894,7 @@ def score_long_term(row, weights=None):
 
     pts = _score_component(raw, w["discount_momentum"])
     breakdown["discount_momentum"] = {"points": pts, "max": w["discount_momentum"],
-                                       "raw_value": round(disc, 1)}
+                                       "raw_value": round(disc, 1), "raw": round(raw, 4)}
     score += pts
 
     return round(score, 1), reasons, breakdown
@@ -935,7 +935,7 @@ def score_options(row, weights=None):
 
     pts = _score_component(raw, w["earnings_catalyst"])
     breakdown["earnings_catalyst"] = {"points": pts, "max": w["earnings_catalyst"],
-                                       "raw_value": dte}
+                                       "raw_value": dte, "raw": round(raw, 4)}
     score += pts
 
     # ── 2. IV CONTEXT (IV Rank, not raw IV) ──
@@ -968,7 +968,7 @@ def score_options(row, weights=None):
 
     pts = _score_component(raw, w["iv_context"])
     breakdown["iv_context"] = {"points": pts, "max": w["iv_context"],
-                                "raw_value": ivr if ivr is not None else iv}
+                                "raw_value": ivr if ivr is not None else iv, "raw": round(raw, 4)}
     score += pts
 
     # ── 3. DIRECTIONAL CONVICTION ──
@@ -1030,7 +1030,7 @@ def score_options(row, weights=None):
 
     pts = _score_component(raw, w["directional"])
     breakdown["directional"] = {"points": pts, "max": w["directional"],
-                                 "raw_value": {"direction": direction, "conviction": total_conviction}}
+                                 "raw_value": {"direction": direction, "conviction": total_conviction}, "raw": round(raw, 4)}
     score += pts
 
     # ── 4. TECHNICAL SETUP ──
@@ -1060,7 +1060,7 @@ def score_options(row, weights=None):
 
     pts = _score_component(raw, w["technical"])
     breakdown["technical"] = {"points": pts, "max": w["technical"],
-                               "raw_value": {"bb_width": bb, "rsi": rsi}}
+                               "raw_value": {"bb_width": bb, "rsi": rsi}, "raw": round(raw, 4)}
     score += pts
 
     # ── 5. LIQUIDITY ──
@@ -1082,7 +1082,7 @@ def score_options(row, weights=None):
 
     pts = _score_component(raw, w["liquidity"])
     breakdown["liquidity"] = {"points": pts, "max": w["liquidity"],
-                               "raw_value": mcap}
+                               "raw_value": mcap, "raw": round(raw, 4)}
     score += pts
 
     # ── 6. ASYMMETRY POTENTIAL (+ WHALE FLOW) ──
@@ -1124,7 +1124,7 @@ def score_options(row, weights=None):
 
     pts = _score_component(raw, w["asymmetry"])
     breakdown["asymmetry"] = {"points": pts, "max": w["asymmetry"],
-                               "raw_value": {"short_pct": short_pct, "beta": beta_val}}
+                               "raw_value": {"short_pct": short_pct, "beta": beta_val}, "raw": round(raw, 4)}
     score += pts
 
     return round(score, 1), reasons, breakdown

@@ -27,7 +27,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 const {useState,useEffect,useCallback,useRef}=React;
 const C={bg:"#f5f5f7",bgCard:"#ffffff",border:"#e5e5ea",green:"#34c759",greenBg:"#f0fdf4",greenBorder:"#bbf7d0",red:"#ff3b30",redBg:"#fef2f2",redBorder:"#fecaca",amber:"#ff9500",amberBg:"#fffbeb",blue:"#007aff",blueBg:"#eff6ff",blueBorder:"#bfdbfe",purple:"#af52de",text:"#1d1d1f",textSec:"#86868b",textTri:"#aeaeb2",shadow:"0 1px 3px rgba(0,0,0,.06)"};
 const mono="'JetBrains Mono',monospace";
-async function api(path,opts){try{const r=await fetch(path,opts);if(!r.ok)throw new Error(r.status);return await r.json()}catch(e){console.error("API "+path+":",e);return null}}
+function _getToken(){return localStorage.getItem('augur_jwt')}
+function _setTokens(access,refresh){localStorage.setItem('augur_jwt',access);if(refresh)localStorage.setItem('augur_refresh',refresh)}
+function _clearTokens(){localStorage.removeItem('augur_jwt');localStorage.removeItem('augur_refresh');localStorage.removeItem('augur_user')}
+async function api(path,opts={}){try{const t=_getToken();const h={...(opts.headers||{})};if(t)h['Authorization']='Bearer '+t;const r=await fetch(path,{...opts,headers:h});if(r.status===401&&t){const ref=localStorage.getItem('augur_refresh');if(ref){const rr=await fetch('/auth/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:ref})});if(rr.ok){const d=await rr.json();_setTokens(d.access_token,d.refresh_token);h['Authorization']='Bearer '+d.access_token;const r2=await fetch(path,{...opts,headers:h});if(!r2.ok)throw new Error(r2.status);return await r2.json()}else{_clearTokens();return null}}}if(!r.ok)throw new Error(r.status);return await r.json()}catch(e){console.error("API "+path+":",e);return null}}
 
 // ─── Timezone utilities ───
 const TZ_KEY='augur_tz';
@@ -318,9 +321,11 @@ function OverviewTab({stats,latest,onSelectPlay,tz}){
     rsiData.length>0&&React.createElement(Card,{style:{padding:20}},React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:12}},"RSI Overview"),React.createElement(SvgBarChart,{data:rsiData,dataKey:"rsi",labelKey:"ticker",height:220,colorFn:d=>d.rsi<30?C.green:d.rsi>70?C.red:C.amber})));}
 
 // ─── Scores (Long Tab) ───
-function ScoresTab({latest}){
+function ScoresTab({latest,personalScores,authUser}){
   const [sel,setSel]=useState(null),[hist,setHist]=useState(null),[filter,setFilter]=useState("all"),[signals,setSignals]=useState(null),[showSig,setShowSig]=useState(false);
   const results=latest?.results||[];const load=useCallback(async t=>{setSel(t);setHist(null);setSignals(null);setShowSig(false);const d=await api("/scores/"+t+"?days=180");if(d)setHist(d)},[]);
+  // Build personal scores lookup
+  const psMap=React.useMemo(()=>{if(!personalScores?.scores)return{};const m={};personalScores.scores.forEach(s=>{m[s.ticker]=s});return m},[personalScores]);
   const lr=sel?results.find(r=>r.ticker===sel):null,L=hist?.history?.length?hist.history[hist.history.length-1]:null,F=hist?.history?.length?hist.history[0]:null;
   const cd=hist?.history?.map(h=>{const ds=fmtDateOnly(h.timestamp);return({date:ds,lt_score:h.lt_score,opt_score:h.opt_score,price:h.price,rsi:h.rsi})})||[];
   function applyFilter(r){
@@ -340,12 +345,12 @@ function ScoresTab({latest}){
     React.createElement("div",{style:{width:320,flexShrink:0,display:"flex",flexDirection:"column",gap:8}},
       React.createElement("div",{style:{display:"flex",gap:4,flexWrap:"wrap"}},allFilters.map(([s,l])=>React.createElement("button",{key:s,onClick:()=>setFilter(s),style:{padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",background:filter===s?C.blue+"12":"transparent",border:"1px solid "+(filter===s?C.blue+"30":C.border),color:filter===s?C.blue:C.textSec}},l))),
       React.createElement(Card,{style:{padding:12,maxHeight:"65vh",overflowY:"auto"}},React.createElement("div",{style:{fontSize:11,color:C.textSec,fontWeight:600,textTransform:"uppercase",letterSpacing:".04em",padding:"4px 8px",marginBottom:4}},fl.length+" tickers"),
-        fl.map(r=>{const sd=r.short_delta;const sdEl=sd!=null&&Math.abs(sd)>=2?React.createElement("span",{title:"Short interest delta: "+(sd>0?"+":"")+sd+"pp (60d)",style:{fontSize:10,fontWeight:700,color:sd<-3?C.green:sd>3?C.red:C.textTri,lineHeight:1}},sd<-3?"↓SI":sd>3?"↑SI":"·"):null;const isBuyZone=r.lt_score>=55&&r.rsi<=45;return React.createElement("div",{key:r.ticker,onClick:()=>load(r.ticker),style:{display:"grid",gridTemplateColumns:"54px 1fr 44px 44px 22px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:8,cursor:"pointer",background:sel===r.ticker?C.blueBg:"transparent",borderLeft:sel===r.ticker?"3px solid "+C.blue:"3px solid transparent"}},React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement("div",null,React.createElement("span",{style:{fontSize:11,color:C.textSec,fontFamily:mono}},"$"+r.price),isBuyZone&&React.createElement("span",{style:{marginLeft:4,fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:C.greenBg,color:C.green,border:"1px solid "+C.greenBorder}},"🟢 Buy Zone")),React.createElement(Badge,{color:r.lt_score>=50?C.green:r.lt_score>=30?C.amber:C.textTri},r.lt_score),React.createElement("span",{style:{fontSize:11,fontWeight:600,padding:"2px 6px",borderRadius:5,background:"#f5f5f5",color:C.textSec,fontFamily:mono}},r.opt_score),sdEl||React.createElement("span",null))}))),
+        fl.map(r=>{const sd=r.short_delta;const sdEl=sd!=null&&Math.abs(sd)>=2?React.createElement("span",{title:"Short interest delta: "+(sd>0?"+":"")+sd+"pp (60d)",style:{fontSize:10,fontWeight:700,color:sd<-3?C.green:sd>3?C.red:C.textTri,lineHeight:1}},sd<-3?"↓SI":sd>3?"↑SI":"·"):null;const isBuyZone=r.lt_score>=55&&r.rsi<=45;const ps=psMap[r.ticker];const hasPS=!!ps;return React.createElement("div",{key:r.ticker,onClick:()=>load(r.ticker),style:{display:"grid",gridTemplateColumns:hasPS?"54px 1fr 44px 36px 44px 22px":"54px 1fr 44px 44px 22px",alignItems:"center",gap:6,padding:"8px 10px",borderRadius:8,cursor:"pointer",background:sel===r.ticker?C.blueBg:"transparent",borderLeft:sel===r.ticker?"3px solid "+C.blue:"3px solid transparent"}},React.createElement("span",{style:{fontSize:13,fontWeight:700,fontFamily:mono}},r.ticker),React.createElement("div",null,React.createElement("span",{style:{fontSize:11,color:C.textSec,fontFamily:mono}},"$"+r.price),isBuyZone&&React.createElement("span",{style:{marginLeft:4,fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:4,background:C.greenBg,color:C.green,border:"1px solid "+C.greenBorder}},"🟢 Buy Zone")),React.createElement(Badge,{color:r.lt_score>=50?C.green:r.lt_score>=30?C.amber:C.textTri},r.lt_score),hasPS&&React.createElement("span",{title:"Your Augur LT score",style:{fontSize:10,fontWeight:700,padding:"2px 5px",borderRadius:5,background:ps.lt_delta>0?C.greenBg:ps.lt_delta<0?C.redBg:"#f5f5f5",color:ps.lt_delta>0?C.green:ps.lt_delta<0?C.red:C.purple,fontFamily:mono,border:"1px solid "+(ps.lt_delta>0?C.greenBorder:ps.lt_delta<0?C.redBorder:"#e5e5ea")}},Math.round(ps.user_lt_score)),React.createElement("span",{style:{fontSize:11,fontWeight:600,padding:"2px 6px",borderRadius:5,background:"#f5f5f5",color:C.textSec,fontFamily:mono}},r.opt_score),sdEl||React.createElement("span",null))}))),
     React.createElement("div",{style:{flex:1}},
       !sel?React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{style:{fontSize:32,marginBottom:12,opacity:.5}},"📈"),React.createElement("div",{style:{fontSize:15,fontWeight:600,marginBottom:4}},"Long-Term Scores"),React.createElement("div",{style:{fontSize:12,color:C.textSec,marginBottom:10}},"Long-term value positions · Retirement account ideas"),React.createElement("div",{style:{fontSize:13,color:C.textSec,maxWidth:400,margin:"0 auto",lineHeight:1.6}},"Select a ticker to view score history, component breakdown, and layer status."))
       :!L?React.createElement(Card,{style:{padding:40,textAlign:"center"}},React.createElement("div",{className:"pulse",style:{fontSize:14,color:C.textSec}},"Loading "+sel+"..."))
       :React.createElement("div",{className:"fade-in",style:{display:"flex",flexDirection:"column",gap:16}},
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12}},React.createElement(Metric,{label:"LT Score",value:L.lt_score,color:L.lt_score>=60?C.green:L.lt_score>=35?C.amber:C.red,sub:"Long-term quality"}),React.createElement(Metric,{label:"Opt Score",value:L.opt_score,color:L.opt_score>=40?C.green:L.opt_score>=25?C.amber:C.red,sub:"Options opportunity"}),React.createElement(Metric,{label:"LT Δ",value:(L.lt_score-F.lt_score>=0?"+":"")+(L.lt_score-F.lt_score),color:L.lt_score>=F.lt_score?C.green:C.red}),React.createElement(Metric,{label:"Price",value:"$"+L.price})),
+        React.createElement("div",{style:{display:"grid",gridTemplateColumns:psMap[sel]?"1fr 1fr 1fr 1fr 1fr":"1fr 1fr 1fr 1fr",gap:12}},React.createElement(Metric,{label:"LT Score",value:L.lt_score,color:L.lt_score>=60?C.green:L.lt_score>=35?C.amber:C.red,sub:"System score"}),psMap[sel]&&React.createElement(Metric,{label:"⚔️ Your LT",value:Math.round(psMap[sel].user_lt_score),color:psMap[sel].user_lt_score>=60?C.green:psMap[sel].user_lt_score>=35?C.amber:C.red,sub:(psMap[sel].lt_delta>=0?"+":"")+psMap[sel].lt_delta+" vs system"}),React.createElement(Metric,{label:"Opt Score",value:L.opt_score,color:L.opt_score>=40?C.green:L.opt_score>=25?C.amber:C.red,sub:"Options opportunity"}),React.createElement(Metric,{label:"LT Δ",value:(L.lt_score-F.lt_score>=0?"+":"")+(L.lt_score-F.lt_score),color:L.lt_score>=F.lt_score?C.green:C.red}),React.createElement(Metric,{label:"Price",value:"$"+L.price})),
         lr&&React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}},
           React.createElement(LayerPill,{name:"SEC",icon:"📋",score:lr.sec_score}),
           React.createElement(LayerPill,{name:"Sent",icon:"💬",score:lr.sentiment_score}),
@@ -975,10 +980,100 @@ function ResearchTab({backtest:initBacktest,tz}){
 }
 
 // ─── App Shell ───
+// ── Auth Modal (Login / Register) ──
+function AuthModal({onAuth,onClose}){
+  const [mode,setMode]=useState("login"),[email,setEmail]=useState(""),[pw,setPw]=useState(""),[name,setName]=useState(""),[err,setErr]=useState(""),[loading,setLoading]=useState(false);
+  const submit=async e=>{e.preventDefault();setErr("");setLoading(true);
+    try{const endpoint=mode==="login"?"/auth/login":"/auth/register";
+      const body=mode==="login"?{email,password:pw}:{email,password:pw,augur_name:name};
+      const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const d=await r.json();if(!r.ok)throw new Error(d.detail||"Failed");
+      _setTokens(d.access_token,d.refresh_token);
+      localStorage.setItem('augur_user',JSON.stringify({id:d.user_id,augur_name:d.augur_name}));
+      onAuth({id:d.user_id,augur_name:d.augur_name,needs_augur_profile:d.needs_augur_profile});
+    }catch(ex){setErr(ex.message)}finally{setLoading(false)}};
+  const S={overlay:{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",backdropFilter:"blur(8px)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"},
+    box:{background:"#fff",borderRadius:20,padding:32,width:380,maxWidth:"90vw",boxShadow:"0 20px 60px rgba(0,0,0,.2)"},
+    input:{width:"100%",padding:"10px 14px",borderRadius:10,border:"1px solid "+C.border,fontSize:14,fontFamily:"Inter",outline:"none",marginBottom:10},
+    btn:{width:"100%",padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#5856d6,#007aff)",color:"#fff",fontSize:14,fontWeight:700,cursor:loading?"wait":"pointer",opacity:loading?.7:1}};
+  return React.createElement("div",{style:S.overlay,onClick:onClose},
+    React.createElement("div",{style:S.box,onClick:e=>e.stopPropagation()},
+      React.createElement("div",{style:{textAlign:"center",marginBottom:20}},
+        React.createElement("div",{style:{width:56,height:56,borderRadius:16,background:"linear-gradient(135deg,#5856d6,#007aff)",margin:"0 auto 12px",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:24,fontWeight:800}},"A"),
+        React.createElement("h2",{style:{fontSize:22,fontWeight:800,margin:0}},mode==="login"?"Welcome Back":"Create Your Augur"),
+        React.createElement("p",{style:{fontSize:13,color:C.textSec,marginTop:4}},mode==="login"?"Sign in to see your personalized scores":"Join the Oracle's forum")),
+      React.createElement("form",{onSubmit:submit},
+        mode==="register"&&React.createElement("input",{style:S.input,placeholder:"Augur Name",value:name,onChange:e=>setName(e.target.value),maxLength:24,required:true}),
+        React.createElement("input",{style:S.input,type:"email",placeholder:"Email",value:email,onChange:e=>setEmail(e.target.value),required:true}),
+        React.createElement("input",{style:S.input,type:"password",placeholder:"Password"+(mode==="register"?" (min 8 chars)":""),value:pw,onChange:e=>setPw(e.target.value),minLength:mode==="register"?8:1,required:true}),
+        err&&React.createElement("div",{style:{color:C.red,fontSize:12,marginBottom:8,fontWeight:500}},err),
+        React.createElement("button",{type:"submit",style:S.btn,disabled:loading},loading?"...":(mode==="login"?"Sign In":"Create Account")),
+        React.createElement("p",{style:{textAlign:"center",fontSize:12,color:C.textSec,marginTop:12,cursor:"pointer"},onClick:()=>{setMode(mode==="login"?"register":"login");setErr("")}},
+          mode==="login"?"Don't have an account? Register":"Already have an account? Sign in"))));
+}
+
+// ── Augur Character Creator ──
+const AUGUR_ATTRS=[
+  {key:"prudentia",icon:"🛡️",name:"Prudentia",desc:"Caution — boosts valuation & earnings quality weights"},
+  {key:"audacia",icon:"⚔️",name:"Audacia",desc:"Boldness — boosts directional conviction & asymmetry"},
+  {key:"sapientia",icon:"📜",name:"Sapientia",desc:"Wisdom — boosts FCF margin & Rule of 40"},
+  {key:"fortuna",icon:"🎲",name:"Fortuna",desc:"Momentum — boosts discount momentum & trend"},
+  {key:"prospectus",icon:"👁",name:"Prospectus",desc:"Vision — boosts earnings catalyst & IV context"},
+  {key:"liquiditas",icon:"💧",name:"Liquiditas",desc:"Liquidity — boosts liquidity & technical setup"},
+];
+function AugurCreator({user,onCreated}){
+  const [attrs,setAttrs]=useState({prudentia:6,audacia:6,sapientia:6,fortuna:6,prospectus:6,liquiditas:6});
+  const [err,setErr]=useState(""),[loading,setLoading]=useState(false),[preview,setPreview]=useState(null);
+  const pool=36,used=Object.values(attrs).reduce((a,b)=>a+b,0),remaining=pool-used;
+  const setAttr=(key,val)=>{const nv=Math.max(1,Math.min(10,parseInt(val)||1));setAttrs(p=>({...p,[key]:nv}))};
+  const submit=async()=>{if(remaining!==0){setErr("Points must sum to "+pool+" ("+remaining+" remaining)");return}
+    setErr("");setLoading(true);
+    try{const r=await fetch("/augur/create",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+_getToken()},body:JSON.stringify(attrs)});
+      const d=await r.json();if(!r.ok)throw new Error(d.detail||"Failed");onCreated(d);
+    }catch(ex){setErr(ex.message)}finally{setLoading(false)}};
+  // Preview effect
+  useEffect(()=>{if(remaining===0){const dom=Object.entries(attrs).sort((a,b)=>b[1]-a[1])[0];
+    const info=AUGUR_ATTRS.find(a=>a.key===dom[0]);setPreview(info)}else setPreview(null)},[attrs]);
+  const S={wrap:{background:"#fff",borderRadius:20,padding:32,maxWidth:560,margin:"40px auto",boxShadow:"0 4px 24px rgba(0,0,0,.08)"},
+    row:{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid "+C.border},
+    slider:{flex:1},btn:{padding:"14px 28px",borderRadius:14,border:"none",background:remaining===0?"linear-gradient(135deg,#5856d6,#007aff)":"#e5e5ea",color:remaining===0?"#fff":"#999",fontSize:15,fontWeight:700,cursor:remaining===0?"pointer":"not-allowed",width:"100%",marginTop:16}};
+  return React.createElement("div",{style:S.wrap},
+    React.createElement("div",{style:{textAlign:"center",marginBottom:24}},
+      React.createElement("h2",{style:{fontSize:24,fontWeight:800,margin:0}},"Forge Your Augur"),
+      React.createElement("p",{style:{fontSize:13,color:C.textSec,marginTop:6}},"Distribute "+pool+" points across 6 attributes. Each shapes how you see the market."),
+      React.createElement("div",{style:{marginTop:12,display:"inline-flex",gap:8,alignItems:"center",padding:"6px 16px",borderRadius:10,background:remaining===0?C.greenBg:remaining<0?C.redBg:C.amberBg,border:"1px solid "+(remaining===0?C.greenBorder:remaining<0?C.redBorder:"#fcd34d")}},
+        React.createElement("span",{style:{fontSize:13,fontWeight:700,color:remaining===0?C.green:remaining<0?C.red:C.amber}},remaining===0?"✓ Balanced":remaining>0?remaining+" points remaining":Math.abs(remaining)+" over budget"))),
+    AUGUR_ATTRS.map(a=>React.createElement("div",{key:a.key,style:S.row},
+      React.createElement("span",{style:{fontSize:20,width:32,textAlign:"center"}},a.icon),
+      React.createElement("div",{style:{minWidth:90}},
+        React.createElement("div",{style:{fontSize:13,fontWeight:700}},a.name),
+        React.createElement("div",{style:{fontSize:10,color:C.textSec}},a.desc)),
+      React.createElement("div",{style:S.slider},
+        React.createElement("input",{type:"range",min:1,max:10,value:attrs[a.key],onChange:e=>setAttr(a.key,e.target.value),style:{width:"100%"}})),
+      React.createElement("span",{style:{fontFamily:mono,fontSize:18,fontWeight:700,width:28,textAlign:"center",color:attrs[a.key]>=8?C.blue:attrs[a.key]<=3?C.red:C.text}},attrs[a.key]))),
+    preview&&React.createElement("div",{style:{marginTop:16,padding:14,background:C.blueBg,borderRadius:12,border:"1px solid "+C.blueBorder}},
+      React.createElement("span",{style:{fontSize:13,fontWeight:600,color:C.blue}},preview.icon+" Dominant: "+preview.name),
+      React.createElement("span",{style:{fontSize:11,color:C.textSec,marginLeft:8}},preview.desc)),
+    err&&React.createElement("div",{style:{color:C.red,fontSize:12,marginTop:8,fontWeight:500}},err),
+    React.createElement("button",{onClick:submit,style:S.btn,disabled:remaining!==0||loading},loading?"Forging...":"⚔️ Forge Augur"));
+}
+
 function App(){
   const [tab,setTab]=useState("overview"),[stats,setStats]=useState(null),[latest,setLatest]=useState(null),[backtest,setBacktest]=useState(null),[scanStatus,setScanStatus]=useState(null),[online,setOnline]=useState(null),[playTicker,setPlayTicker]=useState(null);
   const [tz,setTz]=useState(()=>localStorage.getItem(TZ_KEY)||'');
   const saveTz=v=>{setTz(v);localStorage.setItem(TZ_KEY,v)};
+  // ── Auth state ──
+  const [authUser,setAuthUser]=useState(()=>{try{const u=localStorage.getItem('augur_user');return u?JSON.parse(u):null}catch(e){return null}});
+  const [showAuth,setShowAuth]=useState(false);
+  const [showCreator,setShowCreator]=useState(false);
+  const [augurProfile,setAugurProfile]=useState(null);
+  const [personalScores,setPersonalScores]=useState(null);
+  const handleAuth=u=>{setAuthUser(u);setShowAuth(false);if(u.needs_augur_profile)setShowCreator(true);else loadAugurProfile()};
+  const handleLogout=()=>{_clearTokens();setAuthUser(null);setAugurProfile(null);setPersonalScores(null)};
+  const handleCreated=profile=>{setShowCreator(false);setAugurProfile(profile);loadPersonalScores()};
+  const loadAugurProfile=async()=>{const p=await api("/augur/profile");if(p)setAugurProfile(p)};
+  const loadPersonalScores=async()=>{const s=await api("/scores/latest/personalized?limit=600");if(s)setPersonalScores(s)};
+  useEffect(()=>{if(authUser&&_getToken()){loadAugurProfile();loadPersonalScores()}},[authUser]);
   useEffect(()=>{(async()=>{const s=await api("/stats");if(s){setStats(s);setOnline(true)}else setOnline(false);const l=await api("/scores/latest?limit=600");if(l)setLatest(l);api("/backtest?days=180&forward_period=30").then(b=>{if(b)setBacktest(b)})})()},[]);
   // Navigate to Plays tab and auto-load a ticker (from Killer Plays widget)
   const onSelectPlay=useCallback(ticker=>{setPlayTicker(ticker);setTab("plays")},[]);
@@ -990,6 +1085,14 @@ function App(){
         React.createElement("div",{style:{width:34,height:34,borderRadius:9,background:"linear-gradient(135deg,#5856d6,#007aff)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:15,fontWeight:800,letterSpacing:"-.02em"}},"A"),
         React.createElement("div",null,React.createElement("h1",{style:{fontSize:18,fontWeight:800,margin:0,letterSpacing:"-.02em"}},"Augur"),React.createElement("span",{style:{fontSize:10,color:C.textSec,letterSpacing:".06em",textTransform:"uppercase",fontWeight:600}},"Multi-Sector Investment Oracle"))),
       React.createElement("div",{style:{display:"flex",alignItems:"center",gap:12}},
+        authUser&&augurProfile?React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"4px 12px",borderRadius:10,background:"linear-gradient(135deg,#5856d620,#007aff10)",border:"1px solid #5856d630"}},
+          React.createElement("div",{style:{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#5856d6,#007aff)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:800}},authUser.augur_name?authUser.augur_name[0].toUpperCase():"A"),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:12,fontWeight:700,color:C.text}},authUser.augur_name),
+            React.createElement("div",{style:{fontSize:9,color:C.purple,fontWeight:600}},augurProfile.title||"Novice Augur")),
+          React.createElement("button",{onClick:handleLogout,title:"Logout",style:{background:"none",border:"none",cursor:"pointer",fontSize:14,color:C.textSec,padding:"2px 4px"}},"✕")):
+        authUser?React.createElement("span",{style:{fontSize:12,color:C.blue,fontWeight:600}},authUser.augur_name):
+        React.createElement("button",{onClick:()=>setShowAuth(true),style:{padding:"6px 14px",borderRadius:8,border:"1px solid "+C.purple+"40",background:C.purple+"10",color:C.purple,fontSize:11,fontWeight:600,cursor:"pointer"}},"⚔️ Sign In"),
         React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},React.createElement("div",{style:{width:7,height:7,borderRadius:"50%",background:online===true?C.green:online===false?C.red:C.amber,boxShadow:online===true?"0 0 6px "+C.green+"60":"none"}}),React.createElement("span",{style:{fontSize:11,color:C.textSec,fontWeight:500}},online===true?"Online":online===false?"Offline":"...")),
         React.createElement("select",{value:tz,onChange:e=>saveTz(e.target.value),title:"Timezone",style:{fontSize:11,borderRadius:7,border:"1px solid "+C.border,padding:"5px 8px",background:C.bgCard,color:C.textSec,cursor:"pointer",fontFamily:mono}},TZ_OPTIONS.map(o=>React.createElement("option",{key:o.value,value:o.value},o.label))),
         React.createElement("button",{onClick:triggerScan,disabled:scanStatus==="running",style:{padding:"8px 18px",borderRadius:10,border:"1px solid "+(scanStatus==="running"?C.border:C.blue+"40"),background:scanStatus==="running"?"#f9f9f9":C.blueBg,color:scanStatus==="running"?C.textSec:C.blue,fontSize:12,fontWeight:600,cursor:scanStatus==="running"?"wait":"pointer",boxShadow:C.shadow}},scanStatus==="running"?"Scanning...":scanStatus==="done"?"✓ Done":"Run Scan"))),
@@ -999,12 +1102,14 @@ function App(){
       React.createElement(TB,{active:tab==="scores",onClick:()=>setTab("scores"),icon:"📈"},"Long"),
       React.createElement(TB,{active:tab==="plays",onClick:()=>setTab("plays"),icon:"⚡"},"Options"),
       React.createElement(TB,{active:tab==="backtest",onClick:()=>setTab("backtest"),icon:"🔬"},"Research")),
+    showCreator?React.createElement("main",{style:{padding:"20px 28px",maxWidth:1360,margin:"0 auto"}},React.createElement(AugurCreator,{user:authUser,onCreated:handleCreated})):
     React.createElement("main",{style:{padding:"20px 28px",maxWidth:1360,margin:"0 auto"}},
       tab==="overview"&&React.createElement(OverviewTab,{stats,latest,onSelectPlay,tz}),
-      tab==="scores"&&React.createElement(ScoresTab,{latest}),
+      tab==="scores"&&React.createElement(ScoresTab,{latest,personalScores,authUser}),
       tab==="plays"&&React.createElement(PlaysTab,{latest,defaultTicker:playTicker,tz}),
       tab==="backtest"&&React.createElement(ResearchTab,{backtest,tz})),
-    React.createElement("footer",{style:{padding:"16px 28px",borderTop:"1px solid "+C.border,textAlign:"center"}},React.createElement("span",{style:{fontSize:10,color:C.textTri,fontWeight:500}},"Augur v3.1 — For research purposes only. Not financial advice.")));}
+    showAuth&&React.createElement(AuthModal,{onAuth:handleAuth,onClose:()=>setShowAuth(false)}),
+    React.createElement("footer",{style:{padding:"16px 28px",borderTop:"1px solid "+C.border,textAlign:"center"}},React.createElement("span",{style:{fontSize:10,color:C.textTri,fontWeight:500}},"Augur v4.0 — For research purposes only. Not financial advice.")));}
 ReactDOM.render(React.createElement(App),document.getElementById("root"));
 </script>
 </body>

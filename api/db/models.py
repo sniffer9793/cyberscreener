@@ -6,6 +6,8 @@ Tables: scans, scores, prices, signals, score_weights (NEW: for self-calibration
 import sqlite3
 import os
 import json
+import hashlib
+import secrets
 from datetime import datetime, timedelta
 
 DB_PATH = os.environ.get("CYBERSCREENER_DB", "/app/data/cyberscreener.db")
@@ -694,3 +696,173 @@ def get_play_stats() -> dict:
         "best_play": dict(rows[pnls.index(max(pnls))]),
         "worst_play": dict(rows[pnls.index(min(pnls))]),
     }
+
+
+# ─────────────────────────────────────────────
+# USER & AUGUR PROFILE FUNCTIONS
+# ─────────────────────────────────────────────
+
+def create_user(email: str, password_hash: str, augur_name: str) -> int:
+    """Create a new user. Returns user ID. Raises sqlite3.IntegrityError on duplicate."""
+    conn = get_db()
+    try:
+        cursor = conn.execute(
+            "INSERT INTO users (email, password_hash, augur_name, created_at) VALUES (?, ?, ?, ?)",
+            (email.lower().strip(), password_hash, augur_name.strip(), datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
+        user_id = cursor.lastrowid
+        conn.commit()
+        return user_id
+    finally:
+        conn.close()
+
+
+def get_user_by_email(email: str) -> dict | None:
+    """Look up a user by email. Returns dict or None."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM users WHERE email = ?", (email.lower().strip(),)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_by_id(user_id: int) -> dict | None:
+    """Look up a user by ID. Returns dict or None."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_user_last_login(user_id: int):
+    """Update last_login timestamp."""
+    conn = get_db()
+    conn.execute("UPDATE users SET last_login = ? WHERE id = ?",
+                 (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_id))
+    conn.commit()
+    conn.close()
+
+
+def create_augur_profile(user_id: int, attrs: dict) -> int:
+    """
+    Create an Augur character profile.
+    attrs: {prudentia, audacia, sapientia, fortuna, prospectus, liquiditas}
+    Returns profile ID.
+    """
+    avatar_seed = secrets.token_hex(8)
+    conn = get_db()
+    try:
+        cursor = conn.execute("""
+            INSERT INTO augur_profiles (
+                user_id, prudentia, audacia, sapientia, fortuna, prospectus, liquiditas,
+                avatar_seed, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id,
+            attrs["prudentia"], attrs["audacia"], attrs["sapientia"],
+            attrs["fortuna"], attrs["prospectus"], attrs["liquiditas"],
+            avatar_seed,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ))
+        profile_id = cursor.lastrowid
+        conn.commit()
+        return profile_id
+    finally:
+        conn.close()
+
+
+def get_augur_profile(user_id: int) -> dict | None:
+    """Get a user's Augur profile. Returns dict or None."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM augur_profiles WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_augur_profile_by_id(profile_id: int) -> dict | None:
+    """Get an Augur profile by its own ID (for public view)."""
+    conn = get_db()
+    row = conn.execute("""
+        SELECT ap.*, u.augur_name FROM augur_profiles ap
+        JOIN users u ON ap.user_id = u.id
+        WHERE ap.id = ?
+    """, (profile_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_augur_profile(user_id: int, attrs: dict) -> bool:
+    """Update Augur attributes (respec). Returns True if updated."""
+    conn = get_db()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor = conn.execute("""
+        UPDATE augur_profiles SET
+            prudentia = ?, audacia = ?, sapientia = ?,
+            fortuna = ?, prospectus = ?, liquiditas = ?,
+            updated_at = ?, last_respec = ?
+        WHERE user_id = ?
+    """, (
+        attrs["prudentia"], attrs["audacia"], attrs["sapientia"],
+        attrs["fortuna"], attrs["prospectus"], attrs["liquiditas"],
+        now, now, user_id,
+    ))
+    conn.commit()
+    updated = cursor.rowcount > 0
+    conn.close()
+    return updated
+
+
+def save_refresh_token(user_id: int, token_hash: str, expires_at: str):
+    """Store a hashed refresh token."""
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO refresh_tokens (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
+        (user_id, token_hash, expires_at, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    )
+    conn.commit()
+    conn.close()
+
+
+def validate_refresh_token(token_hash: str) -> dict | None:
+    """Look up a refresh token. Returns {user_id, expires_at} or None."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT user_id, expires_at FROM refresh_tokens WHERE token_hash = ?",
+        (token_hash,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    result = dict(row)
+    if datetime.strptime(result["expires_at"], "%Y-%m-%d %H:%M:%S") < datetime.now():
+        return None  # expired
+    return result
+
+
+def delete_refresh_token(token_hash: str):
+    """Delete a refresh token (logout)."""
+    conn = get_db()
+    conn.execute("DELETE FROM refresh_tokens WHERE token_hash = ?", (token_hash,))
+    conn.commit()
+    conn.close()
+
+
+def delete_user_refresh_tokens(user_id: int):
+    """Delete all refresh tokens for a user."""
+    conn = get_db()
+    conn.execute("DELETE FROM refresh_tokens WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_all_augur_profiles(limit: int = 50) -> list:
+    """Get all Augur profiles with user names (for community/leaderboard)."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT ap.*, u.augur_name, u.email
+        FROM augur_profiles ap
+        JOIN users u ON ap.user_id = u.id
+        ORDER BY ap.xp DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
