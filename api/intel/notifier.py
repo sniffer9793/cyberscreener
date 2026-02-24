@@ -1,11 +1,19 @@
 """
-Augur Notifier — Gmail email alerts for momentum events and high-RC plays.
+Augur Notifier — Email alerts for momentum events and high-RC plays.
+
+Uses SendGrid's free HTTPS API (no SMTP — avoids VPS firewall blocks).
+Free tier: 100 emails/day.
 
 Setup (VPS systemd service env vars):
   ALERT_EMAIL_TO       = recipient address (e.g. you@gmail.com)
-  ALERT_EMAIL_FROM     = sending Gmail address (e.g. augur.alerts@gmail.com)
-  GMAIL_APP_PASSWORD   = 16-char App Password from
-                         Google Account → Security → 2-Step Verification → App Passwords
+  ALERT_EMAIL_FROM     = verified sender address (e.g. augur.alerts@gmail.com)
+  SENDGRID_API_KEY     = API key from app.sendgrid.com → Settings → API Keys
+
+SendGrid setup:
+  1. Sign up at https://sendgrid.com (free — 100 emails/day)
+  2. Verify your sender email: Settings → Sender Authentication → Single Sender
+  3. Create API key: Settings → API Keys → Create API Key (Mail Send permission)
+  4. Add env vars to VPS systemd service
 
 If any of the three env vars are missing, notifications are silently skipped
 (no errors, no impact on scanning).
@@ -14,18 +22,19 @@ Dedup: each (ticker, alert_type) pair is only emailed once per calendar day.
 """
 
 import os
-import smtplib
+import json
 import logging
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import requests
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-_TO   = os.environ.get("ALERT_EMAIL_TO", "")
-_FROM = os.environ.get("ALERT_EMAIL_FROM", "")
-_PASS = os.environ.get("GMAIL_APP_PASSWORD", "")
-_ENABLED = bool(_TO and _FROM and _PASS)
+_TO      = os.environ.get("ALERT_EMAIL_TO", "")
+_FROM    = os.environ.get("ALERT_EMAIL_FROM", "")
+_SG_KEY  = os.environ.get("SENDGRID_API_KEY", "")
+_ENABLED = bool(_TO and _FROM and _SG_KEY)
+
+_SENDGRID_URL = "https://api.sendgrid.com/v3/mail/send"
 
 # In-process dedup: "CRWD_momentum" → "2026-02-24"
 _sent_today: dict = {}
@@ -42,20 +51,31 @@ def _is_fresh(ticker: str, alert_type: str) -> bool:
 
 
 def _send(subject: str, html_body: str) -> bool:
-    """Send an HTML email via Gmail SMTP. Returns True on success."""
+    """Send an HTML email via SendGrid API. Returns True on success."""
     if not _ENABLED:
         return False
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"]    = _FROM
-        msg["To"]      = _TO
-        msg.attach(MIMEText(html_body, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login(_FROM, _PASS)
-            smtp.sendmail(_FROM, _TO, msg.as_string())
-        logger.info(f"📧 Email sent: {subject}")
-        return True
+        payload = {
+            "personalizations": [{"to": [{"email": _TO}]}],
+            "from": {"email": _FROM, "name": "Augur Intelligence"},
+            "subject": subject,
+            "content": [{"type": "text/html", "value": html_body}],
+        }
+        resp = requests.post(
+            _SENDGRID_URL,
+            headers={
+                "Authorization": f"Bearer {_SG_KEY}",
+                "Content-Type": "application/json",
+            },
+            data=json.dumps(payload),
+            timeout=15,
+        )
+        if resp.status_code in (200, 202):
+            logger.info(f"📧 Email sent: {subject}")
+            return True
+        else:
+            logger.warning(f"Email send failed: {resp.status_code} {resp.text[:200]}")
+            return False
     except Exception as e:
         logger.warning(f"Email send failed ({type(e).__name__}): {e}")
         return False
@@ -195,7 +215,7 @@ def notify_high_rc_play(ticker: str, play: dict, rc_score: int) -> bool:
 
 
 def test_email() -> bool:
-    """Send a test email to verify SMTP config is working."""
+    """Send a test email to verify SendGrid config is working."""
     body = _html_header("Test Email")
     body += '<p style="font-size:14px">✅ Augur email notifications are working correctly.</p>'
     body += _html_footer()
