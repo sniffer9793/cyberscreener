@@ -269,9 +269,25 @@ try:
 except Exception:
     pass
 
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+
+# ── React SPA + Legacy Dashboard Serving ──
+
+def _find_react_dist():
+    """Find the React build directory."""
+    candidates = [
+        Path(__file__).parent.parent / "frontend" / "dist",
+        Path("/app/frontend/dist"),
+        Path("/opt/cyberscreener/frontend/dist"),
+    ]
+    for p in candidates:
+        if p.exists() and (p / "index.html").exists():
+            return p
+    return None
 
 def _find_dashboard():
+    """Find the legacy single-file dashboard."""
     candidates = [
         Path(__file__).parent / "dashboard_embed.html",
         Path(__file__).parent.parent / "dashboard_embed.html",
@@ -283,12 +299,31 @@ def _find_dashboard():
             return p
     return None
 
+# Mount React static assets if build exists
+_react_dist = _find_react_dist()
+if _react_dist and (_react_dist / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(_react_dist / "assets")), name="react-assets")
+    logger.info(f"Mounted React assets from {_react_dist / 'assets'}")
+
 @app.get("/", response_class=HTMLResponse)
 def serve_dashboard():
+    # Prefer React SPA if built
+    dist = _find_react_dist()
+    if dist:
+        return (dist / "index.html").read_text()
+    # Fall back to legacy dashboard
     p = _find_dashboard()
     if p:
         return p.read_text()
-    return f"<h1>Dashboard not found</h1>"
+    return "<h1>Dashboard not found</h1>"
+
+@app.get("/legacy", response_class=HTMLResponse)
+def serve_legacy_dashboard():
+    """Serve the original single-file dashboard."""
+    p = _find_dashboard()
+    if p:
+        return p.read_text()
+    return "<h1>Legacy dashboard not found</h1>"
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def serve_dashboard_alt():
@@ -2426,3 +2461,22 @@ def get_alert_config(admin: dict = Depends(require_admin)):
         "alert_email": ALERT_EMAIL or "(not set)",
         "required_env_vars": ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "ALERT_EMAIL"],
     }
+
+
+# ─── SPA Catch-All (must be LAST) ───
+# Serves React index.html for any non-API path so React Router can handle client-side routing.
+
+@app.get("/{full_path:path}", response_class=HTMLResponse)
+def spa_catch_all(full_path: str):
+    """SPA catch-all: serve React index.html for client-side routes."""
+    # Don't catch API-like paths
+    if full_path.startswith(("api/", "docs", "openapi", "redoc")):
+        raise HTTPException(status_code=404)
+    dist = _find_react_dist()
+    if dist:
+        return (dist / "index.html").read_text()
+    # Fall back to legacy
+    p = _find_dashboard()
+    if p:
+        return p.read_text()
+    raise HTTPException(status_code=404, detail="Dashboard not found")
