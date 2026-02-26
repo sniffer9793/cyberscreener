@@ -8,6 +8,9 @@ import Phaser from 'phaser';
 import {
   TILE_SIZE, MAP_COLS, MAP_ROWS, WORLD_W, WORLD_H,
   TILE, SOLID_TILES, DISTRICTS, SPAWN, PLAYER_SPEED,
+  TILE_VARIANTS, WATER_FRAMES, WATER_FRAME_MS,
+  NPC_SPEECH_LINES, TICKER_TEXT, TORCH_POSITIONS,
+  CHAR_W, CHAR_H, RANKS,
 } from '../config.js';
 import { generateMap, getDistrictAt } from '../utils/mapGenerator.js';
 
@@ -60,6 +63,13 @@ export class WorldScene extends Phaser.Scene {
     this._createMinimap();
     this._createCoordDisplay();
 
+    // ── Atmospheric effects ──
+    this._createDustParticles();
+    this._createVignette();
+    this._createTorchGlows();
+    this._createScrollingTicker();
+    this._startAmbientSpeech();
+
     // ── Click-to-move ──
     this.input.on('pointerdown', (pointer) => {
       const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -77,8 +87,21 @@ export class WorldScene extends Phaser.Scene {
     this._checkDistrict();
   }
 
-  update(time) {
+  update(time, delta) {
     if (!this.player) return;
+
+    // ── Water animation ──
+    if (this.waterTiles && this.waterTiles.length > 0) {
+      this.waterTimer += delta;
+      if (this.waterTimer >= WATER_FRAME_MS) {
+        this.waterTimer -= WATER_FRAME_MS;
+        this.waterFrame = (this.waterFrame + 1) % WATER_FRAMES;
+        const wKey = `tile_${TILE.WATER}_f${this.waterFrame}`;
+        for (const pos of this.waterTiles) {
+          this.mapRT.drawFrame(wKey, undefined, pos.col * TILE_SIZE, pos.row * TILE_SIZE);
+        }
+      }
+    }
 
     const speed = PLAYER_SPEED;
     let vx = 0, vy = 0;
@@ -106,16 +129,26 @@ export class WorldScene extends Phaser.Scene {
     // Apply velocity
     this.player.body.setVelocity(vx, vy);
 
-    // Direction + walk animation
+    // Direction + 4-frame walk animation
     const moving = vx !== 0 || vy !== 0;
+    const rk = this.playerRank;
     if (moving) {
-      const walkFrame = Math.floor(time / 200) % 2;
+      this._idleTime = 0;
+      const walkFrame = Math.floor(time / 150) % 4;
       let dir = 'down';
       if (vy < 0) dir = 'up';
       else if (vy > 0) dir = 'down';
       else if (vx < 0) dir = 'left';
       else if (vx > 0) dir = 'right';
-      this.player.setTexture(`player_${dir}_${walkFrame}`);
+      this._lastDir = dir;
+      this.player.setTexture(`player_rank${rk}_${dir}_${walkFrame}`);
+    } else {
+      // Idle animation — gentle sway every 800ms after 500ms idle
+      this._idleTime += delta;
+      if (this._idleTime > 500) {
+        const idleFrame = Math.floor(time / 800) % 2 === 0 ? 0 : 2;
+        this.player.setTexture(`player_rank${rk}_${this._lastDir}_${idleFrame}`);
+      }
     }
 
     // Tile collision
@@ -130,6 +163,9 @@ export class WorldScene extends Phaser.Scene {
     // Update minimap + coords
     this._updateMinimap();
     this._updateCoords();
+
+    // Scroll ticker
+    this._updateTicker();
   }
 
   // ─── Notify React via callbacks ref ───
@@ -145,13 +181,24 @@ export class WorldScene extends Phaser.Scene {
   // ─────────────────────────────────────────────
 
   _renderMap() {
-    const rt = this.add.renderTexture(0, 0, WORLD_W, WORLD_H).setOrigin(0, 0).setDepth(0);
+    this.mapRT = this.add.renderTexture(0, 0, WORLD_W, WORLD_H).setOrigin(0, 0).setDepth(0);
+    this.waterTiles = [];
+    this.waterFrame = 0;
+    this.waterTimer = 0;
 
     for (let r = 0; r < MAP_ROWS; r++) {
       for (let c = 0; c < MAP_COLS; c++) {
         const tileId = this.mapData[r][c];
-        const key = `tile_${tileId}`;
-        rt.drawFrame(key, undefined, c * TILE_SIZE, r * TILE_SIZE);
+        let key;
+        if (tileId === TILE.WATER) {
+          key = `tile_${TILE.WATER}_f0`;
+          this.waterTiles.push({ col: c, row: r });
+        } else {
+          const vc = TILE_VARIANTS[tileId] || 1;
+          const v = (c * 7 + r * 13) % vc;
+          key = `tile_${tileId}_v${v}`;
+        }
+        this.mapRT.drawFrame(key, undefined, c * TILE_SIZE, r * TILE_SIZE);
       }
     }
   }
@@ -161,13 +208,26 @@ export class WorldScene extends Phaser.Scene {
   // ─────────────────────────────────────────────
 
   _createPlayer() {
-    // Player starts facing down, frame 0
-    this.player = this.physics.add.sprite(SPAWN.x, SPAWN.y, 'player_down_0');
-    this.player.setOrigin(0.5, 0.5);
+    // Determine player rank from profile (passed via game registry)
+    const profile = this.game.registry.get('playerProfile');
+    const level = profile?.level || 1;
+    this.playerRank = 0;
+    for (let i = RANKS.length - 1; i >= 0; i--) {
+      if (level >= RANKS[i].minLevel) { this.playerRank = i; break; }
+    }
+
+    // Player starts facing down, frame 0 (16x24 sprite)
+    const startKey = `player_rank${this.playerRank}_down_0`;
+    this.player = this.physics.add.sprite(SPAWN.x, SPAWN.y, startKey);
+    this.player.setOrigin(0.5, 0.75); // anchor at feet
     this.player.setDepth(10);
     this.player.body.setSize(10, 10);
-    this.player.body.setOffset(3, 5);
+    this.player.body.setOffset(3, 12); // physics body at feet
     this.player.body.setCollideWorldBounds(true);
+
+    // Idle tracking
+    this._idleTime = 0;
+    this._lastDir = 'down';
 
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H);
   }
@@ -238,23 +298,42 @@ export class WorldScene extends Phaser.Scene {
   _createDistrictLabel() {
     const cx = this.cameras.main.width / 2;
 
-    this.districtLabelBg = this.add.rectangle(cx, 8, 200, 40, 0x000000, 0.7)
+    // Gold outer border
+    this.districtLabelBorder = this.add.rectangle(cx, -50, 200, 44, 0xDDBB44, 0.5)
+      .setScrollFactor(0).setOrigin(0.5, 0).setDepth(99).setVisible(false);
+    // Dark background
+    this.districtLabelBg = this.add.rectangle(cx, -50, 196, 40, 0x0D0D0D, 0.85)
       .setScrollFactor(0).setOrigin(0.5, 0).setDepth(100).setVisible(false);
 
-    this.districtLabel = this.add.text(cx, 14, '', {
+    // Laurel decorations (gold leaf motifs: left and right)
+    this.laurelLeft = this.add.text(0, 0, '\u2767', {
+      fontFamily: 'serif', fontSize: '14px', color: '#DDBB44',
+    }).setScrollFactor(0).setOrigin(0.5, 0.5).setDepth(102).setVisible(false).setAlpha(0.6);
+
+    this.laurelRight = this.add.text(0, 0, '\u2619', {
+      fontFamily: 'serif', fontSize: '14px', color: '#DDBB44',
+    }).setScrollFactor(0).setOrigin(0.5, 0.5).setDepth(102).setVisible(false).setAlpha(0.6);
+
+    this.districtLabel = this.add.text(cx, -50, '', {
       fontFamily: 'Cinzel, serif',
-      fontSize: '12px',
+      fontSize: '11px',
       fontStyle: 'bold',
-      color: '#F2F2F2',
+      color: '#DDBB44',
       align: 'center',
     }).setScrollFactor(0).setOrigin(0.5, 0).setDepth(101).setVisible(false);
 
-    this.districtDescText = this.add.text(cx, 28, '', {
+    this.districtDescText = this.add.text(cx, -50, '', {
       fontFamily: 'Inter, sans-serif',
       fontSize: '7px',
       color: '#A6A6A6',
       align: 'center',
     }).setScrollFactor(0).setOrigin(0.5, 0).setDepth(101).setVisible(false);
+
+    // District transition overlay
+    const vw = this.cameras.main.width;
+    const vh = this.cameras.main.height;
+    this._transitionOverlay = this.add.rectangle(vw / 2, vh / 2, vw, vh, 0x000000, 0)
+      .setScrollFactor(0).setDepth(180).setVisible(false);
   }
 
   _checkDistrict() {
@@ -266,10 +345,26 @@ export class WorldScene extends Phaser.Scene {
 
     if (distId !== prevId) {
       this.currentDistrict = district;
-      if (district) this._showDistrictLabel(district);
-      else this._hideDistrictLabel();
+      if (district) {
+        this._showDistrictLabel(district);
+        this._playTransition();
+      } else {
+        this._hideDistrictLabel();
+      }
       this._notify('district', district);
     }
+  }
+
+  _playTransition() {
+    if (!this._transitionOverlay) return;
+    this._transitionOverlay.setVisible(true).setAlpha(0);
+    this.tweens.add({
+      targets: this._transitionOverlay,
+      alpha: 0.3,
+      duration: 300,
+      yoyo: true,
+      onComplete: () => this._transitionOverlay.setVisible(false),
+    });
   }
 
   _showDistrictLabel(district) {
@@ -277,30 +372,69 @@ export class WorldScene extends Phaser.Scene {
     this.districtLabel.setText(district.name.toUpperCase());
     this.districtDescText.setText(district.desc);
 
-    const textW = Math.max(this.districtLabel.width, this.districtDescText.width) + 24;
-    this.districtLabelBg.setSize(textW, 40).setPosition(cx, 8);
-    this.districtLabel.setPosition(cx, 14);
-    this.districtDescText.setPosition(cx, 28);
+    const textW = Math.max(this.districtLabel.width, this.districtDescText.width) + 40;
 
-    [this.districtLabelBg, this.districtLabel, this.districtDescText].forEach(o => {
-      o.setVisible(true).setAlpha(1);
+    // Position elements off-screen above, then slide down
+    const allObjs = [this.districtLabelBorder, this.districtLabelBg, this.districtLabel, this.districtDescText, this.laurelLeft, this.laurelRight];
+    allObjs.forEach(o => o.setVisible(true).setAlpha(1));
+
+    this.districtLabelBorder.setSize(textW + 4, 44).setPosition(cx, -50);
+    this.districtLabelBg.setSize(textW, 40).setPosition(cx, -50);
+    this.districtLabel.setPosition(cx, -50);
+    this.districtDescText.setPosition(cx, -50);
+    this.laurelLeft.setPosition(cx - textW / 2 + 6, -50);
+    this.laurelRight.setPosition(cx + textW / 2 - 6, -50);
+
+    // Slide down
+    if (this.labelTween) this.labelTween.stop();
+    const targetY = 14;
+    this.tweens.add({
+      targets: [this.districtLabelBorder, this.districtLabelBg],
+      y: targetY - 6,
+      duration: 400,
+      ease: 'Back.easeOut',
+    });
+    this.tweens.add({
+      targets: this.districtLabel,
+      y: targetY,
+      duration: 400,
+      ease: 'Back.easeOut',
+    });
+    this.tweens.add({
+      targets: this.districtDescText,
+      y: targetY + 16,
+      duration: 400,
+      ease: 'Back.easeOut',
+    });
+    this.tweens.add({
+      targets: this.laurelLeft,
+      y: targetY + 12,
+      x: cx - textW / 2 + 6,
+      duration: 400,
+      ease: 'Back.easeOut',
+    });
+    this.tweens.add({
+      targets: this.laurelRight,
+      y: targetY + 12,
+      x: cx + textW / 2 - 6,
+      duration: 400,
+      ease: 'Back.easeOut',
     });
 
-    if (this.labelTween) this.labelTween.stop();
+    // Fade out after delay
     this.labelTween = this.tweens.add({
-      targets: [this.districtLabelBg, this.districtLabel, this.districtDescText],
+      targets: allObjs,
       alpha: 0,
-      delay: 3000,
+      delay: 3500,
       duration: 1000,
-      onComplete: () => {
-        [this.districtLabelBg, this.districtLabel, this.districtDescText].forEach(o => o.setVisible(false));
-      },
+      onComplete: () => allObjs.forEach(o => o.setVisible(false)),
     });
   }
 
   _hideDistrictLabel() {
     if (this.labelTween) this.labelTween.stop();
-    [this.districtLabelBg, this.districtLabel, this.districtDescText].forEach(o => o?.setVisible(false));
+    const allObjs = [this.districtLabelBorder, this.districtLabelBg, this.districtLabel, this.districtDescText, this.laurelLeft, this.laurelRight];
+    allObjs.forEach(o => o?.setVisible(false));
   }
 
   // ─────────────────────────────────────────────
@@ -351,7 +485,7 @@ export class WorldScene extends Phaser.Scene {
       const pillar = this.add.sprite(
         pos.x * TILE_SIZE + TILE_SIZE / 2,
         pos.y * TILE_SIZE + TILE_SIZE / 2,
-        `tile_${TILE.PILLAR}`
+        `tile_${TILE.PILLAR}_v0`
       );
       pillar.setDepth(7);
       pillar.setData('name', `Scroll Pillar ${i + 1}`);
@@ -367,14 +501,28 @@ export class WorldScene extends Phaser.Scene {
 
   _createInteractPrompt() {
     this.interactPrompt = this.add.container(0, 0).setDepth(50).setVisible(false);
-    const bg = this.add.rectangle(0, 0, 80, 16, 0x000000, 0.8).setOrigin(0.5, 1);
+    // Gold border
+    const border = this.add.rectangle(0, -8, 84, 18, 0xDDBB44, 0.5).setOrigin(0.5, 0.5);
+    // Dark background
+    const bg = this.add.rectangle(0, -8, 80, 14, 0x0D0D0D, 0.85).setOrigin(0.5, 0.5);
     this.interactPromptText = this.add.text(0, -8, '[E] Talk', {
       fontFamily: 'monospace',
       fontSize: '6px',
       color: '#DDBB44',
       align: 'center',
     }).setOrigin(0.5, 0.5);
-    this.interactPrompt.add([bg, this.interactPromptText]);
+    this.interactPrompt.add([border, bg, this.interactPromptText]);
+
+    // Pulse animation
+    this.tweens.add({
+      targets: this.interactPrompt,
+      scaleX: { from: 0.95, to: 1.05 },
+      scaleY: { from: 0.95, to: 1.05 },
+      duration: 500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
   }
 
   _checkInteractionProximity() {
@@ -395,9 +543,10 @@ export class WorldScene extends Phaser.Scene {
 
     if (nearest) {
       this.interactTarget = nearest;
-      this.interactPrompt.setPosition(nearest.x, nearest.y - 12);
+      this.interactPrompt.setPosition(nearest.x, nearest.y - 16);
       this.interactPrompt.setVisible(true);
-      this.interactPromptText.setText(`[E] ${nearest.getData('name')}`);
+      const action = nearest.getData('type') === 'npc' ? 'Talk' : 'Examine';
+      this.interactPromptText.setText(`[E] ${action}`);
     } else {
       this.interactTarget = null;
       this.interactPrompt.setVisible(false);
@@ -464,20 +613,56 @@ export class WorldScene extends Phaser.Scene {
     const mx = vw - mw - padding;
     const my = vh - mh - padding;
 
-    this.add.rectangle(mx + mw / 2, my + mh / 2, mw + 4, mh + 4, 0x000000, 0.7)
+    // Gold border frame
+    this.add.rectangle(mx + mw / 2, my + mh / 2, mw + 6, mh + 6, 0xDDBB44, 0.6)
+      .setScrollFactor(0).setDepth(89);
+    // Dark background
+    this.add.rectangle(mx + mw / 2, my + mh / 2, mw + 2, mh + 2, 0x0D0D0D, 0.85)
       .setScrollFactor(0).setDepth(90);
 
+    // Draw detailed minimap from mapData
+    const mmGfx = this.make.graphics({ x: 0, y: 0, add: false });
+    for (let r = 0; r < MAP_ROWS; r++) {
+      for (let c = 0; c < MAP_COLS; c++) {
+        const tid = this.mapData[r][c];
+        let color = null, alpha = 0.5;
+        if (tid === TILE.WALL) { color = 0x555555; alpha = 0.7; }
+        else if (tid === TILE.ROAD) { color = 0x8B7B60; alpha = 0.4; }
+        else if (tid === TILE.WATER) { color = 0x4488CC; alpha = 0.7; }
+        else if (tid === TILE.TREE) { color = 0x2D6B2D; alpha = 0.6; }
+        else if (tid === TILE.MARBLE) { color = 0xD8D0C4; alpha = 0.3; }
+        else if (tid === TILE.DOOR) { color = 0xDDBB44; alpha = 0.7; }
+        if (color !== null) {
+          mmGfx.fillStyle(color, alpha);
+          mmGfx.fillRect(c * scale, r * scale, scale, scale);
+        }
+      }
+    }
+    // Building outlines from districts
     for (const d of DISTRICTS) {
       const { x, y, w, h } = d.bounds;
-      this.add.rectangle(
-        mx + x * scale + (w * scale) / 2,
-        my + y * scale + (h * scale) / 2,
-        w * scale, h * scale,
-        d.color, 0.4
-      ).setScrollFactor(0).setDepth(91);
+      mmGfx.lineStyle(1, d.color, 0.6);
+      mmGfx.strokeRect(x * scale, y * scale, w * scale, h * scale);
     }
+    mmGfx.generateTexture('minimap_tex', mw, mh);
+    mmGfx.destroy();
 
-    this.minimapPlayer = this.add.circle(mx, my, 2, 0xFFDD44).setScrollFactor(0).setDepth(92);
+    this.add.image(mx + mw / 2, my + mh / 2, 'minimap_tex')
+      .setScrollFactor(0).setDepth(91);
+
+    // Pulsing gold player dot
+    this.minimapPlayer = this.add.circle(mx, my, 2, 0xFFDD44)
+      .setScrollFactor(0).setDepth(92);
+    this.tweens.add({
+      targets: this.minimapPlayer,
+      scaleX: { from: 0.8, to: 1.3 },
+      scaleY: { from: 0.8, to: 1.3 },
+      alpha: { from: 1, to: 0.6 },
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
     this._minimapPos = { mx, my, scale };
   }
 
@@ -495,16 +680,214 @@ export class WorldScene extends Phaser.Scene {
   // ─────────────────────────────────────────────
 
   _createCoordDisplay() {
-    this.coordText = this.add.text(6, 6, '', {
+    // Dark pill background
+    this.coordBg = this.add.rectangle(6, 6, 70, 12, 0x0D0D0D, 0.7)
+      .setScrollFactor(0).setOrigin(0, 0).setDepth(89);
+    // Compass icon
+    this.coordIcon = this.add.text(9, 7, '\u2316', {
+      fontFamily: 'serif',
+      fontSize: '8px',
+      color: '#DDBB44',
+    }).setScrollFactor(0).setOrigin(0, 0).setDepth(90);
+    // Coordinate text
+    this.coordText = this.add.text(18, 8, '', {
       fontFamily: 'monospace',
       fontSize: '6px',
       color: '#A6A6A6',
-    }).setScrollFactor(0).setDepth(90);
+    }).setScrollFactor(0).setOrigin(0, 0).setDepth(90);
   }
 
   _updateCoords() {
     const col = Math.floor(this.player.x / TILE_SIZE);
     const row = Math.floor(this.player.y / TILE_SIZE);
-    this.coordText.setText(`${col}, ${row}`);
+    const abbr = this.currentDistrict ? this.currentDistrict.name.split(' ').pop().slice(0, 4).toUpperCase() : 'WILD';
+    this.coordText.setText(`${abbr} ${col},${row}`);
+    // Adjust pill width to text
+    const tw = this.coordText.width + 20;
+    this.coordBg.setSize(Math.max(70, tw), 12);
+  }
+
+  // ─────────────────────────────────────────────
+  // ATMOSPHERIC EFFECTS
+  // ─────────────────────────────────────────────
+
+  /** Ambient dust particles drifting around the player */
+  _createDustParticles() {
+    this.dustEmitter = this.add.particles(0, 0, 'dust_particle', {
+      follow: this.player,
+      followOffset: { x: 0, y: 0 },
+      frequency: 800,
+      lifespan: 3000,
+      quantity: 1,
+      maxParticles: 15,
+      speed: { min: 3, max: 10 },
+      angle: { min: 0, max: 360 },
+      alpha: { start: 0.3, end: 0 },
+      scale: { start: 1, end: 0.5 },
+      tint: [0xD4B896, 0xC8A882, 0xBB9970],
+      blendMode: 'ADD',
+      emitZone: {
+        type: 'random',
+        source: new Phaser.Geom.Rectangle(-40, -30, 80, 60),
+      },
+    });
+    this.dustEmitter.setDepth(15);
+  }
+
+  /** Dark vignette around viewport edges */
+  _createVignette() {
+    const vw = this.cameras.main.width;
+    const vh = this.cameras.main.height;
+    const vignetteGfx = this.make.graphics({ x: 0, y: 0, add: false });
+
+    // Concentric dark rectangles increasing in alpha toward edges
+    const steps = 8;
+    for (let i = 0; i < steps; i++) {
+      const t = i / steps;
+      const inset = Math.floor((1 - t) * Math.min(vw, vh) * 0.35);
+      const alpha = t * t * 0.4; // quadratic falloff
+      vignetteGfx.fillStyle(0x000000, alpha);
+      vignetteGfx.fillRect(0, 0, vw, inset);               // top
+      vignetteGfx.fillRect(0, vh - inset, vw, inset);       // bottom
+      vignetteGfx.fillRect(0, 0, inset, vh);                // left
+      vignetteGfx.fillRect(vw - inset, 0, inset, vh);       // right
+    }
+
+    vignetteGfx.generateTexture('vignette_tex', vw, vh);
+    vignetteGfx.destroy();
+
+    this.add.image(vw / 2, vh / 2, 'vignette_tex')
+      .setScrollFactor(0)
+      .setDepth(200)
+      .setAlpha(1);
+  }
+
+  /** Torch glow sprites at building entrances with flickering */
+  _createTorchGlows() {
+    for (const tp of TORCH_POSITIONS) {
+      const wx = tp.x * TILE_SIZE + TILE_SIZE / 2;
+      const wy = tp.y * TILE_SIZE + TILE_SIZE / 2;
+
+      // Glow halo
+      const glow = this.add.image(wx, wy, 'torch_glow')
+        .setDepth(5)
+        .setAlpha(0.6)
+        .setBlendMode(Phaser.BlendModes.ADD);
+
+      // Flickering alpha + scale tween
+      this.tweens.add({
+        targets: glow,
+        alpha: { from: 0.4, to: 0.7 },
+        scaleX: { from: 0.9, to: 1.1 },
+        scaleY: { from: 0.9, to: 1.1 },
+        duration: 300 + Math.random() * 200,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+
+      // Small flame sprite
+      const flame = this.add.image(wx, wy - 6, 'torch_flame')
+        .setDepth(6)
+        .setAlpha(0.8);
+
+      this.tweens.add({
+        targets: flame,
+        alpha: { from: 0.6, to: 0.9 },
+        y: flame.y - 1,
+        duration: 200 + Math.random() * 150,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+    }
+  }
+
+  /** Scrolling ticker banner at top of viewport */
+  _createScrollingTicker() {
+    const vw = this.cameras.main.width;
+    // Dark backdrop bar
+    this.tickerBg = this.add.rectangle(vw / 2, 5, vw, 10, 0x0D0D0D, 0.85)
+      .setScrollFactor(0)
+      .setDepth(150)
+      .setOrigin(0.5, 0.5);
+
+    // Gold text — repeat twice for seamless wrapping
+    const fullText = TICKER_TEXT + TICKER_TEXT;
+    this.tickerText = this.add.text(0, 1, fullText, {
+      fontFamily: 'monospace',
+      fontSize: '7px',
+      color: '#DDBB44',
+    }).setScrollFactor(0).setDepth(151).setAlpha(0.8);
+
+    this.tickerWidth = this.tickerText.width / 2; // half because we doubled text
+  }
+
+  _updateTicker() {
+    if (!this.tickerText) return;
+    this.tickerText.x -= 0.5;
+    // Wrap when first copy scrolls fully off screen
+    if (this.tickerText.x < -this.tickerWidth) {
+      this.tickerText.x += this.tickerWidth;
+    }
+  }
+
+  /** Random NPCs show ambient stock-market-Roman quips */
+  _startAmbientSpeech() {
+    this._speechTimer = this.time.addEvent({
+      delay: 6000 + Math.random() * 4000,
+      callback: () => this._showRandomSpeech(),
+      loop: true,
+    });
+  }
+
+  _showRandomSpeech() {
+    // Pick a random NPC that's an actual NPC (not pillar) and in viewport
+    const npcOnly = this.npcs.filter(n => n.getData('type') === 'npc');
+    if (npcOnly.length === 0) return;
+
+    const cam = this.cameras.main;
+    const visible = npcOnly.filter(n => {
+      const sx = (n.x - cam.scrollX) * cam.zoom;
+      const sy = (n.y - cam.scrollY) * cam.zoom;
+      return sx > -50 && sx < cam.width + 50 && sy > -50 && sy < cam.height + 50;
+    });
+
+    const target = visible.length > 0
+      ? visible[Math.floor(Math.random() * visible.length)]
+      : npcOnly[Math.floor(Math.random() * npcOnly.length)];
+
+    const line = NPC_SPEECH_LINES[Math.floor(Math.random() * NPC_SPEECH_LINES.length)];
+
+    // Create small speech bubble
+    const bx = target.x;
+    const by = target.y - 16;
+
+    const txt = this.add.text(bx, by, line, {
+      fontFamily: 'sans-serif',
+      fontSize: '5px',
+      color: '#F2F2F2',
+      align: 'center',
+      wordWrap: { width: 80 },
+    }).setOrigin(0.5, 1).setDepth(55);
+
+    const bounds = txt.getBounds();
+    const bg = this.add.rectangle(
+      bx, by - bounds.height / 2,
+      bounds.width + 8, bounds.height + 4,
+      0x1A1A1A, 0.85
+    ).setOrigin(0.5, 0.5).setDepth(54);
+
+    const bubble = this.add.container(0, 0, [bg, txt]).setDepth(55);
+
+    // Fade out after 3 seconds
+    this.time.delayedCall(3000, () => {
+      this.tweens.add({
+        targets: bubble,
+        alpha: 0,
+        duration: 500,
+        onComplete: () => bubble.destroy(),
+      });
+    });
   }
 }

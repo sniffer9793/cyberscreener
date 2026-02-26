@@ -97,6 +97,78 @@ export const SPAWN = {
 // Movement speed (pixels per frame at 60fps)
 export const PLAYER_SPEED = 120;
 
+// Tile variant counts (for procedural variation)
+export const TILE_VARIANTS = {
+  [TILE.VOID]:   1,
+  [TILE.STONE]:  4,
+  [TILE.MARBLE]: 3,
+  [TILE.GRASS]:  4,
+  [TILE.WALL]:   3,
+  [TILE.PILLAR]: 1,
+  [TILE.WATER]:  1,  // water uses animation frames instead
+  [TILE.ROAD]:   3,
+  [TILE.DOOR]:   1,
+  [TILE.COLUMN]: 1,
+  [TILE.TREE]:   3,
+  [TILE.BANNER]: 1,
+  [TILE.SHELF]:  2,
+};
+
+// Water animation
+export const WATER_FRAMES = 4;
+export const WATER_FRAME_MS = 400;
+
+// Character sprite dimensions
+export const CHAR_W = 16;
+export const CHAR_H = 24;
+
+// Rank tiers — visual progression based on player level
+export const RANKS = [
+  { id: 'plebeian',  minLevel: 1,  name: 'Plebeian',
+    toga: 0xDDD8CC, trim: 0xAAAAAA, hair: 0x664422, belt: null, armor: null, cape: null, helmet: null },
+  { id: 'equite',    minLevel: 6,  name: 'Equite',
+    toga: 0x3366AA, trim: 0xDDBB44, hair: 0x553311, belt: 0x8B5A2B, armor: null, cape: null, helmet: null },
+  { id: 'quaestor',  minLevel: 16, name: 'Quaestor',
+    toga: 0x996633, trim: 0xDDBB44, hair: 0x553311, belt: 0x665533, armor: 0xBB8844, cape: null, helmet: 0xBB8844 },
+  { id: 'master',    minLevel: 31, name: 'Master',
+    toga: 0x555555, trim: 0xDDBB44, hair: null, belt: 0x444444, armor: 0x888888, cape: 0x8B2500, helmet: 0x777777 },
+  { id: 'senator',   minLevel: 51, name: 'Senator',
+    toga: 0x4E0B59, trim: 0xFFDD66, hair: null, belt: 0xDDBB44, armor: 0xDDBB44, cape: 0x8B2500, helmet: 0xDDBB44 },
+];
+
+// NPC ambient speech lines (stock-market-Roman themed)
+export const NPC_SPEECH_LINES = [
+  'Buy the dip, citizen!',
+  'CRWD looks strong today...',
+  'The Forum whispers of gains.',
+  'Sell before the Ides!',
+  'Patience is the way of the Quaestor.',
+  'The scrolls foretold this rally.',
+  'Volatility is opportunity.',
+  'PANW holds the line.',
+  'Trust the data, not the crowd.',
+  'My options plays are forging well.',
+  'The Tabularium never lies.',
+  'Steel-grade conviction needed here.',
+  'Markets favor the prepared.',
+  'Another scan, another signal...',
+];
+
+// Scrolling ticker text
+export const TICKER_TEXT = 'QUAEST \u00b7 ANCIENT INTELLIGENCE \u00b7 MODERN GAINS \u00b7 CYBER \u00b7 ENERGY \u00b7 DEFENSE \u00b7 FORGE YOUR CONVICTION \u00b7 ';
+
+// Torch positions (building entrances — derived from district door locations)
+export const TORCH_POSITIONS = [
+  // Curia door (bottom side, doorOffset=10)
+  { x: 13, y: 19 }, { x: 16, y: 19 },
+  // Basilica Julia door (bottom side, doorOffset=10)
+  { x: 65, y: 19 }, { x: 68, y: 19 },
+  // Subura door (top side, doorOffset=11)
+  { x: 14, y: 41 }, { x: 17, y: 41 },
+  // Tabularium door (top side, doorOffset=11)
+  { x: 64, y: 41 }, { x: 67, y: 41 },
+];
+
 // Tile color palette for texture generation
 export const TILE_COLORS = {
   [TILE.VOID]:   { fill: 0x111111, border: 0x111111 },
