@@ -5,3 +5,6 @@ export { SvgHorizBarChart } from './SvgHorizBarChart';
 export { SvgGroupedBarChart } from './SvgGroupedBarChart';
 export { SvgPriceChart } from './SvgPriceChart';
 export { ChartTooltip } from './ChartTooltip';
+export { ChartContainer } from './ChartContainer';
+export { ChartCrosshair } from './ChartCrosshair';
+export { TimeframeSelector } from './TimeframeSelector';

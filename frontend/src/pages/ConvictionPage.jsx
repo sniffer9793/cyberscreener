@@ -14,6 +14,7 @@ import { LayerPill } from '../components/ui/LayerPill';
 import { BreakdownPanel } from '../components/ui/BreakdownPanel';
 import { SvgAreaChart } from '../components/charts/SvgAreaChart';
 import { SvgPriceChart } from '../components/charts/SvgPriceChart';
+import { TimeframeSelector } from '../components/charts/TimeframeSelector';
 import { fetchScoreHistory, fetchSignals } from '../api/endpoints';
 import { ltBreakdown, optBreakdown } from '../utils/scoring';
 import { fmtDateOnly } from '../utils/formatters';
@@ -44,6 +45,7 @@ export function ConvictionPage({ latest }) {
   const [filter, setFilter] = useState('all');
   const [signals, setSignals] = useState(null);
   const [showSig, setShowSig] = useState(false);
+  const [scoreDays, setScoreDays] = useState(180);
 
   const results = latest?.results || [];
 
@@ -55,14 +57,23 @@ export function ConvictionPage({ latest }) {
     return m;
   }, [personalScores]);
 
-  const load = useCallback(async (ticker) => {
+  const load = useCallback(async (ticker, days = scoreDays) => {
     setSel(ticker);
     setHist(null);
     setSignals(null);
     setShowSig(false);
-    const d = await fetchScoreHistory(ticker, 180);
+    const d = await fetchScoreHistory(ticker, days);
     if (d) setHist(d);
-  }, []);
+  }, [scoreDays]);
+
+  const handleScoreDaysChange = useCallback(async (days) => {
+    setScoreDays(days);
+    if (sel) {
+      setHist(null);
+      const d = await fetchScoreHistory(sel, days);
+      if (d) setHist(d);
+    }
+  }, [sel]);
 
   const lr = sel ? results.find(r => r.ticker === sel) : null;
   const L = hist?.history?.length ? hist.history[hist.history.length - 1] : null;
@@ -267,14 +278,17 @@ export function ConvictionPage({ latest }) {
 
             {/* Score history chart */}
             <Card style={{ padding: 20 }}>
-              <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{sel} — Score History</h2>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{sel} — Score History</h2>
+                <TimeframeSelector options={[30, 60, 90, 180, 365]} value={scoreDays} onChange={handleScoreDaysChange} />
+              </div>
               <SvgAreaChart
                 data={cd}
                 lines={[
                   { key: 'lt_score', name: 'LT Score', color: 'var(--color-success)' },
                   { key: 'opt_score', name: 'Opt Score', color: 'var(--imperial-purple)' },
                 ]}
-                height={260}
+                height={320}
               />
             </Card>
 

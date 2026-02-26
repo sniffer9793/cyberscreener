@@ -43,6 +43,7 @@ export const DISTRICTS = [
     color: 0x4E0B59, // Imperial Purple
     labelColor: '#4E0B59',
     spawn: true,
+    page: null, // No dashboard panel
   },
   {
     id: 'curia',
@@ -53,6 +54,7 @@ export const DISTRICTS = [
     color: 0xB8860B, // Forge Amber
     labelColor: '#B8860B',
     locked: 'STEEL',
+    page: 'conviction', // ConvictionPage (Scores)
   },
   {
     id: 'basilica_julia',
@@ -62,6 +64,7 @@ export const DISTRICTS = [
     floor: TILE.MARBLE,
     color: 0x665D1E, // Oxidized Bronze
     labelColor: '#665D1E',
+    page: 'basilica', // BasilicaPage (Overview)
   },
   {
     id: 'subura',
@@ -71,6 +74,7 @@ export const DISTRICTS = [
     floor: TILE.STONE,
     color: 0xA6A6A6, // Denarius Silver
     labelColor: '#666666',
+    page: 'anvil', // AnvilPage (Plays)
   },
   {
     id: 'tabularium',
@@ -80,6 +84,7 @@ export const DISTRICTS = [
     floor: TILE.STONE,
     color: 0x8B2500, // Forge Red
     labelColor: '#8B2500',
+    page: 'archive', // ArchivePage (Backtest)
   },
 ];
 

@@ -55,9 +55,9 @@ export function App() {
     return () => clearInterval(interval);
   }, [loadData]);
 
-  // Load backtest lazily when Archive page is visited
+  // Load backtest lazily when Archive or World page is visited
   useEffect(() => {
-    if (location.pathname === '/archive' && !backtest) {
+    if ((location.pathname === '/archive' || location.pathname === '/world') && !backtest) {
       fetchBacktest(180, 30).then(d => { if (d) setBacktest(d); });
     }
   }, [location.pathname, backtest]);
@@ -155,7 +155,7 @@ export function App() {
             path="/world"
             element={
               <Suspense fallback={<div style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-secondary)' }}>Loading world...</div>}>
-                <WorldPage />
+                <WorldPage stats={stats} latest={latest} backtest={backtest} tz={tz} />
               </Suspense>
             }
           />

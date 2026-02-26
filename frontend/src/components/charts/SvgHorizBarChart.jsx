@@ -1,65 +1,82 @@
-import { useState } from 'react';
-import { ChartTooltip } from './ChartTooltip';
+import { ChartContainer } from './ChartContainer';
 
 /**
  * Horizontal bar chart with labels and values.
+ * Pixel-based rendering for readable text.
  */
-export function SvgHorizBarChart({ data, dataKey, labelKey, height = 180 }) {
-  const [tip, setTip] = useState(null);
+export function SvgHorizBarChart({ data, dataKey, labelKey, height = 240 }) {
   if (!data || !data.length) return null;
 
   const mx = Math.max(...data.map(d => Math.abs(d[dataKey] || 0)), 1);
-  const h = 100 / data.length;
 
   return (
-    <div style={{ position: 'relative', width: '100%', height }}>
-      <ChartTooltip tip={tip} />
-      <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-        {data.map((d, i) => {
-          const v = d[dataKey] || 0;
-          const w = (Math.abs(v) / mx) * 60;
-          const c = v >= 0 ? 'var(--color-success)' : 'var(--color-danger)';
-          const by = i * h + h * 0.15;
-          const bh = h * 0.7;
+    <ChartContainer height={height} marginTop={8} marginRight={16} marginBottom={8} marginLeft={140}>
+      {({ width, height: h, plotArea }) => {
+        const { left, right, top, bottom } = plotArea;
+        const pw = right - left;
+        const rowH = (bottom - top) / data.length;
 
-          return (
-            <g key={i}>
-              <text x={2} y={by + bh / 2 + 1} fill="var(--color-text-secondary)" fontSize={3.5} dominantBaseline="middle">
-                {d[labelKey] || ''}
-              </text>
-              <rect
-                x={35}
-                y={by}
-                width={Math.max(w, 0.5)}
-                height={bh}
-                fill={c}
-                opacity={0.7}
-                rx={0.5}
-                onMouseEnter={e => {
-                  const r = e.target.getBoundingClientRect();
-                  const pr = e.target.closest('div').getBoundingClientRect();
-                  setTip({
-                    x: r.left - pr.left + r.width,
-                    y: r.top - pr.top,
-                    text: `${d[labelKey] || ''}: ${v > 0 ? '+' : ''}${v.toFixed(1)}%`,
-                  });
-                }}
-                onMouseLeave={() => setTip(null)}
-              />
-              <text
-                x={36 + Math.max(w, 1)}
-                y={by + bh / 2 + 1}
-                fill={c}
-                fontSize={3}
-                dominantBaseline="middle"
-                fontFamily="var(--font-mono)"
-              >
-                {(v > 0 ? '+' : '') + v.toFixed(1) + '%'}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
+        return (
+          <g>
+            {/* Grid lines */}
+            {[0, 0.25, 0.5, 0.75, 1].map(f => (
+              <line key={f} x1={left} y1={top} x2={left} y2={bottom}
+                stroke="transparent" />
+            ))}
+            {[0.25, 0.5, 0.75, 1].map(f => (
+              <line key={f} x1={left + pw * f} y1={top} x2={left + pw * f} y2={bottom}
+                stroke="var(--color-border-subtle)" strokeWidth={1} opacity={0.5} />
+            ))}
+
+            {data.map((d, i) => {
+              const v = d[dataKey] || 0;
+              const barW = (Math.abs(v) / mx) * pw;
+              const c = v >= 0 ? 'var(--color-success)' : 'var(--color-danger)';
+              const by = top + i * rowH + rowH * 0.15;
+              const bh = rowH * 0.7;
+
+              return (
+                <g key={i}>
+                  {/* Label */}
+                  <text
+                    x={left - 8}
+                    y={by + bh / 2}
+                    fill="var(--color-text-secondary)"
+                    fontSize={11}
+                    fontFamily="var(--font-body)"
+                    textAnchor="end"
+                    dominantBaseline="middle"
+                  >
+                    {d[labelKey] || ''}
+                  </text>
+                  {/* Bar */}
+                  <rect
+                    x={left}
+                    y={by}
+                    width={Math.max(barW, 2)}
+                    height={bh}
+                    fill={c}
+                    opacity={0.75}
+                    rx={3}
+                  />
+                  {/* Value */}
+                  <text
+                    x={left + Math.max(barW, 2) + 6}
+                    y={by + bh / 2}
+                    fill={c}
+                    fontSize={11}
+                    fontFamily="var(--font-mono)"
+                    fontWeight={600}
+                    dominantBaseline="middle"
+                  >
+                    {(v > 0 ? '+' : '') + v.toFixed(1) + '%'}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        );
+      }}
+    </ChartContainer>
   );
 }
