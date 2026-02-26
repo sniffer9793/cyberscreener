@@ -3,7 +3,7 @@
  * Root component with router, data loading, and auth state management.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { Header } from './components/layout/Header';
@@ -16,6 +16,9 @@ import { BasilicaPage } from './pages/BasilicaPage';
 import { ConvictionPage } from './pages/ConvictionPage';
 import { AnvilPage } from './pages/AnvilPage';
 import { ArchivePage } from './pages/ArchivePage';
+
+// Lazy-load World page (includes Phaser ~1MB) — only downloaded when user visits /world
+const WorldPage = lazy(() => import('./pages/WorldPage').then(m => ({ default: m.WorldPage })));
 import { fetchStats, fetchLatestScores, fetchBacktest, triggerScan, fetchScanStatus } from './api/endpoints';
 import { getStoredTz } from './utils/formatters';
 
@@ -147,6 +150,14 @@ export function App() {
           <Route
             path="/archive"
             element={<ArchivePage backtest={backtest} tz={tz} />}
+          />
+          <Route
+            path="/world"
+            element={
+              <Suspense fallback={<div style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-secondary)' }}>Loading world...</div>}>
+                <WorldPage />
+              </Suspense>
+            }
           />
         </Routes>
       </main>
