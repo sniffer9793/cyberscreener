@@ -3,10 +3,10 @@ import { useAuth } from '../../auth/AuthContext';
 import styles from './NavBar.module.css';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Basilica', icon: '\uD83C\uDFDB\uFE0F' },
-  { to: '/conviction', label: 'Conviction', icon: '\uD83D\uDCDC' },
-  { to: '/anvil', label: 'Anvil', icon: '\u2694\uFE0F' },
-  { to: '/archive', label: 'Archive', icon: '\uD83D\uDCDA' },
+  { to: '/', label: 'Basilica', icon: '🏛️' },
+  { to: '/conviction', label: 'Conviction', icon: '📜' },
+  { to: '/anvil', label: 'Anvil', icon: '⚔️' },
+  { to: '/archive', label: 'Archive', icon: '📚' },
 ];
 
 export function NavBar({ onRunScan, scanRunning }) {
@@ -34,7 +34,7 @@ export function NavBar({ onRunScan, scanRunning }) {
           onClick={onRunScan}
           disabled={scanRunning}
         >
-          {scanRunning ? '\u27F3 Scanning...' : '\u25B6 Run Scan'}
+          {scanRunning ? '⟳ Scanning...' : '▶ Run Scan'}
         </button>
       )}
     </nav>

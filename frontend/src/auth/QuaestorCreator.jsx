@@ -4,12 +4,12 @@ import { augurCreate } from '../api/endpoints';
 import styles from './QuaestorCreator.module.css';
 
 const VIRTUTES = [
-  { key: 'prudentia', name: 'Prudentia', icon: '\uD83D\uDEE1\uFE0F', desc: 'Caution \u2014 boosts Valuation & Earnings Quality' },
-  { key: 'audacia', name: 'Audacia', icon: '\u2694\uFE0F', desc: 'Boldness \u2014 boosts Directional Conviction & Asymmetry' },
-  { key: 'sapientia', name: 'Sapientia', icon: '\uD83D\uDCDC', desc: 'Wisdom \u2014 boosts FCF Margin & Rule of 40' },
-  { key: 'fortuna', name: 'Fortuna', icon: '\uD83C\uDFB2', desc: 'Momentum \u2014 boosts Discount Momentum & Trend' },
-  { key: 'prospectus', name: 'Prospectus', icon: '\uD83D\uDC41', desc: 'Vision \u2014 boosts Earnings Catalyst & IV Context' },
-  { key: 'liquiditas', name: 'Liquiditas', icon: '\uD83D\uDCA7', desc: 'Liquidity \u2014 boosts Liquidity & Technical Setup' },
+  { key: 'prudentia', name: 'Prudentia', icon: '🛡️', desc: 'Caution — boosts Valuation & Earnings Quality' },
+  { key: 'audacia', name: 'Audacia', icon: '⚔️', desc: 'Boldness — boosts Directional Conviction & Asymmetry' },
+  { key: 'sapientia', name: 'Sapientia', icon: '📜', desc: 'Wisdom — boosts FCF Margin & Rule of 40' },
+  { key: 'fortuna', name: 'Fortuna', icon: '🎲', desc: 'Momentum — boosts Discount Momentum & Trend' },
+  { key: 'prospectus', name: 'Prospectus', icon: '👁', desc: 'Vision — boosts Earnings Catalyst & IV Context' },
+  { key: 'liquiditas', name: 'Liquiditas', icon: '💧', desc: 'Liquidity — boosts Liquidity & Technical Setup' },
 ];
 
 const POOL = 36;

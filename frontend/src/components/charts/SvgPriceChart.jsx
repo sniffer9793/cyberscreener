@@ -79,7 +79,7 @@ export function SvgPriceChart({ ticker, days = 90 }) {
     sma_cross_bull: '#30d158',
     sma_cross_bear: 'var(--color-danger)',
   };
-  const SI = { earnings: 'E', insider_buy: 'B', insider_sell: 'S', rsi_oversold: '\u25CE', rsi_overbought: '\u25CE', sma_cross_bull: '\u25B2', sma_cross_bear: '\u25BC' };
+  const SI = { earnings: 'E', insider_buy: 'B', insider_sell: 'S', rsi_oversold: '◎', rsi_overbought: '◎', sma_cross_bull: '▲', sma_cross_bear: '▼' };
 
   const d2i = {};
   prices.forEach((p, i) => { d2i[p.date] = i; });
@@ -93,7 +93,7 @@ export function SvgPriceChart({ ticker, days = 90 }) {
       });
       idx = best;
     }
-    return { ...s, idx, x: px(idx), color: SC[s.type] || 'var(--color-info)', icon: SI[s.type] || '\u2022' };
+    return { ...s, idx, x: px(idx), color: SC[s.type] || 'var(--color-info)', icon: SI[s.type] || '•' };
   });
 
   const fmtD = d => d ? d.slice(5) : '';
@@ -211,9 +211,9 @@ export function SvgPriceChart({ ticker, days = 90 }) {
         <span style={{ fontSize: 9, color: 'var(--color-warning)', fontFamily: 'var(--font-mono)' }}>E Earnings </span>
         <span style={{ fontSize: 9, color: 'var(--color-success)', fontFamily: 'var(--font-mono)' }}>B Buy </span>
         <span style={{ fontSize: 9, color: 'var(--color-danger)', fontFamily: 'var(--font-mono)' }}>S Sell </span>
-        <span style={{ fontSize: 9, color: '#30d158', fontFamily: 'var(--font-mono)' }}>{'\u25B2'} Bull </span>
-        <span style={{ fontSize: 9, color: 'var(--color-danger)', fontFamily: 'var(--font-mono)' }}>{'\u25BC'} Bear </span>
-        <span style={{ fontSize: 9, color: 'var(--color-success)', fontFamily: 'var(--font-mono)' }}>{'\u25CE'} OS/OB</span>
+        <span style={{ fontSize: 9, color: '#30d158', fontFamily: 'var(--font-mono)' }}>{'▲'} Bull </span>
+        <span style={{ fontSize: 9, color: 'var(--color-danger)', fontFamily: 'var(--font-mono)' }}>{'▼'} Bear </span>
+        <span style={{ fontSize: 9, color: 'var(--color-success)', fontFamily: 'var(--font-mono)' }}>{'◎'} OS/OB</span>
       </div>
     </div>
   );

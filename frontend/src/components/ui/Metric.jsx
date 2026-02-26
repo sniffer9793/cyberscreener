@@ -8,7 +8,7 @@ export function Metric({ label, value, sub, color, className = '' }) {
     <div className={`${styles.metric} ${className}`}>
       <div className={styles.label}>{label}</div>
       <div className={styles.value} style={color ? { color } : undefined}>
-        {value ?? '\u2014'}
+        {value ?? '—'}
       </div>
       {sub && <div className={styles.sub}>{sub}</div>}
     </div>

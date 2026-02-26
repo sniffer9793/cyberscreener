@@ -56,3 +56,10 @@
 
 .signalRow { display: flex; gap: 8px; padding: 5px 8px; border-radius: 6px; }
 .signalRow:nth-child(even) { background: var(--color-bg); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .layout { flex-direction: column; }
+  .sidebar { width: 100%; max-height: 40vh; overflow-y: auto; }
+  .breakdownGrid { grid-template-columns: 1fr; }
+}

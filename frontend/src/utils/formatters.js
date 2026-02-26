@@ -33,7 +33,7 @@ function parseTS(ts) {
 // ── Format: "Feb 24, 3:15 PM" ──
 export function fmtTS(ts, tz, opts) {
   const d = parseTS(ts);
-  if (!d) return '\u2014';
+  if (!d) return '—';
   const tzVal = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
   try {
     return d.toLocaleString('en-US', {
@@ -50,7 +50,7 @@ export function fmtTS(ts, tz, opts) {
 // ── Format: "3:15 PM" ──
 export function fmtTimeOnly(ts, tz) {
   const d = parseTS(ts);
-  if (!d) return '\u2014';
+  if (!d) return '—';
   const tzVal = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
   try {
     return d.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tzVal });
@@ -62,7 +62,7 @@ export function fmtTimeOnly(ts, tz) {
 // ── Format: "Feb 24" ──
 export function fmtDateOnly(ts, tz) {
   const d = parseTS(ts);
-  if (!d) return '\u2014';
+  if (!d) return '—';
   const tzVal = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
   try {
     return d.toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: tzVal });
@@ -73,7 +73,7 @@ export function fmtDateOnly(ts, tz) {
 
 // ── Format expiry date: "Mar 21" ──
 export function fmtExpiry(dateStr) {
-  if (!dateStr) return '\u2014';
+  if (!dateStr) return '—';
   try {
     const d = new Date(dateStr + 'T12:00:00Z');
     if (isNaN(d)) return dateStr;
@@ -86,7 +86,7 @@ export function fmtExpiry(dateStr) {
 // ── Format: "Feb 24, 3:15 PM" (calendar row) ──
 export function fmtCalRow(ts, tz) {
   const d = parseTS(ts);
-  if (!d) return '\u2014';
+  if (!d) return '—';
   const tzVal = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
   try {
     return d.toLocaleString('en-US', {
@@ -101,16 +101,16 @@ export function fmtCalRow(ts, tz) {
 
 // ── Number formatting ──
 export function fmtPct(value, decimals = 1) {
-  if (value == null || isNaN(value)) return '\u2014';
+  if (value == null || isNaN(value)) return '—';
   return `${value >= 0 ? '+' : ''}${Number(value).toFixed(decimals)}%`;
 }
 
 export function fmtPrice(value) {
-  if (value == null || isNaN(value)) return '\u2014';
+  if (value == null || isNaN(value)) return '—';
   return `$${Number(value).toFixed(2)}`;
 }
 
 export function fmtNum(value, decimals = 1) {
-  if (value == null || isNaN(value)) return '\u2014';
+  if (value == null || isNaN(value)) return '—';
   return Number(value).toFixed(decimals);
 }

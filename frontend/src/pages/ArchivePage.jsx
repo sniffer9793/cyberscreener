@@ -21,14 +21,17 @@ export function ArchivePage({ backtest: init, tz }) {
   const [period, setPeriod] = useState(30);
   const [data, setData] = useState(init);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
   const [wtHist, setWtHist] = useState(null);
   const [calRunning, setCalRunning] = useState(false);
   const [calMsg, setCalMsg] = useState('');
 
   const loadBT = useCallback(async (fwd) => {
     setLoading(true);
+    setError(false);
     const d = await fetchBacktest(180, fwd);
     if (d) setData(d);
+    else setError(true);
     setLoading(false);
   }, []);
 
@@ -44,19 +47,31 @@ export function ArchivePage({ backtest: init, tz }) {
 
   const handleCalibrate = async () => {
     setCalRunning(true);
-    setCalMsg('Calibrating weights\u2026');
+    setCalMsg('Calibrating weights…');
     const d = await runCalibrate(false);
     setCalRunning(false);
     if (d && d.status === 'calibrated') {
-      setCalMsg('\u2713 Weights updated');
+      setCalMsg('✓ Weights updated');
       loadWH();
     } else {
       setCalMsg(d?.message || 'Insufficient data');
     }
   };
 
-  if (loading) return <div className={styles.loading}>Running backtest\u2026</div>;
-  if (!data) return <Card style={{ padding: 40, textAlign: 'center' }}><div style={{ fontSize: 36, marginBottom: 12 }}>{'\uD83D\uDCCA'}</div><div style={{ fontSize: 15, fontWeight: 600 }}>Loading backtest\u2026</div></Card>;
+  if (loading) return <div className={styles.loading}>Running backtest…</div>;
+  if (!data) return (
+    <Card style={{ padding: 40, textAlign: 'center' }}>
+      <div style={{ fontSize: 36, marginBottom: 12 }}>{error ? '⚠️' : '📊'}</div>
+      <div style={{ fontSize: 15, fontWeight: 600, marginBottom: error ? 12 : 0 }}>
+        {error ? 'Backtest unavailable — server may be busy' : 'Loading backtest…'}
+      </div>
+      {error && (
+        <button onClick={() => loadBT(period)} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+          ↻ Retry
+        </button>
+      )}
+    </Card>
+  );
 
   const sd = data.score_vs_returns || {};
   const ld = data.layer_attribution || {};
@@ -102,7 +117,7 @@ export function ArchivePage({ backtest: init, tz }) {
       }
     });
   }
-  const bestWindow = ec.length > 0 ? ec.reduce((a, b) => a.return14d > b.return14d ? a : b).name : '\u2014';
+  const bestWindow = ec.length > 0 ? ec.reduce((a, b) => a.return14d > b.return14d ? a : b).name : '—';
 
   // Weight history
   const WH = wtHist?.history || [];
@@ -123,7 +138,7 @@ export function ArchivePage({ backtest: init, tz }) {
             </span>
             {isAdmin && (
               <button className={styles.calibrateBtn} onClick={handleCalibrate} disabled={calRunning}>
-                {calRunning ? 'Calibrating\u2026' : '\u2699 Auto-Calibrate'}
+                {calRunning ? 'Calibrating…' : '⚙ Auto-Calibrate'}
               </button>
             )}
             {calMsg && <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{calMsg}</span>}
@@ -132,19 +147,19 @@ export function ArchivePage({ backtest: init, tz }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginTop: 16 }}>
           <Metric
             label="LT Correlation"
-            value={ltCorr != null ? ltCorr.toFixed(3) : '\u2014'}
+            value={ltCorr != null ? ltCorr.toFixed(3) : '—'}
             color={ltCorr > 0.15 ? 'var(--color-success)' : ltCorr > 0.05 ? 'var(--color-warning)' : 'var(--color-danger)'}
             sub={ltCorr > 0.15 ? 'Strong predictive' : ltCorr > 0.05 ? 'Moderate signal' : 'Weak signal'}
           />
           <Metric
-            label={'Q5 \u2212 Q1 Spread'}
-            value={spread != null ? spread.toFixed(1) + '%' : '\u2014'}
+            label={'Q5 − Q1 Spread'}
+            value={spread != null ? spread.toFixed(1) + '%' : '—'}
             color={spread > 3 ? 'var(--color-success)' : spread > 1 ? 'var(--color-warning)' : 'var(--color-danger)'}
             sub={spread > 3 ? 'Top scores beat bottom >3%' : 'Moderate separation'}
           />
           <Metric
             label="Opt Correlation"
-            value={optCorr != null ? optCorr.toFixed(3) : '\u2014'}
+            value={optCorr != null ? optCorr.toFixed(3) : '—'}
             color={optCorr > 0.1 ? 'var(--color-success)' : 'var(--color-warning)'}
             sub={`Options vs ${period}d return`}
           />

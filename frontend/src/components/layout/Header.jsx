@@ -25,7 +25,7 @@ export function Header({ onAuthClick }) {
           </div>
         ) : (
           <button className={styles.signInBtn} onClick={onAuthClick}>
-            {'\u2694\uFE0F'} Sign In
+            {'⚔️'} Sign In
           </button>
         )}
       </div>

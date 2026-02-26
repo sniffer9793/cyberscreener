@@ -109,7 +109,7 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
     detail = (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Card style={{ padding: 40, textAlign: 'center' }}>
-          <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.5 }}>{'\u2694\uFE0F'}</div>
+          <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.5 }}>{'⚔️'}</div>
           <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>The Anvil</div>
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 480, margin: '0 auto', lineHeight: 1.7 }}>
             Select a ticker to forge options plays. Each includes scoring breakdown, Reality Check, and risk/reward analysis.
@@ -119,8 +119,8 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
         {/* Play history toggle */}
         <Card style={{ padding: 20, cursor: 'pointer' }} onClick={() => { if (!showHist) loadHistory(); setShowHist(s => !s); }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showHist ? 14 : 0 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{'\uD83D\uDCC8'} Play History</h2>
-            <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{showHist ? '\u25B2 hide' : '\u25BC expand'}</span>
+            <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{'📈'} Play History</h2>
+            <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{showHist ? '▲ hide' : '▼ expand'}</span>
           </div>
           {showHist && (
             <div onClick={e => e.stopPropagation()}>
@@ -129,9 +129,9 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
               {!histLoading && stats?.total_closed > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
                   <Metric label="Closed" value={stats.total_closed} />
-                  <Metric label="Win Rate" value={stats.win_rate != null ? stats.win_rate + '%' : '\u2014'} color={stats.win_rate >= 55 ? 'var(--color-success)' : 'var(--color-warning)'} />
-                  <Metric label="Avg P&L" value={stats.avg_pnl != null ? `${stats.avg_pnl > 0 ? '+' : ''}${stats.avg_pnl}%` : '\u2014'} color={stats.avg_pnl > 0 ? 'var(--color-success)' : 'var(--color-danger)'} />
-                  <Metric label="Best Play" value={stats.best_play?.ticker || '\u2014'} sub={stats.best_play?.pnl_pct != null ? `${stats.best_play.pnl_pct > 0 ? '+' : ''}${stats.best_play.pnl_pct}%` : ''} />
+                  <Metric label="Win Rate" value={stats.win_rate != null ? stats.win_rate + '%' : '—'} color={stats.win_rate >= 55 ? 'var(--color-success)' : 'var(--color-warning)'} />
+                  <Metric label="Avg P&L" value={stats.avg_pnl != null ? `${stats.avg_pnl > 0 ? '+' : ''}${stats.avg_pnl}%` : '—'} color={stats.avg_pnl > 0 ? 'var(--color-success)' : 'var(--color-danger)'} />
+                  <Metric label="Best Play" value={stats.best_play?.ticker || '—'} sub={stats.best_play?.pnl_pct != null ? `${stats.best_play.pnl_pct > 0 ? '+' : ''}${stats.best_play.pnl_pct}%` : ''} />
                 </div>
               )}
               {!histLoading && plays.length > 0 && (
@@ -151,14 +151,14 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
                         return (
                           <tr key={i} style={{ background: i % 2 === 0 ? 'var(--color-bg)' : 'transparent' }}>
                             <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{p.ticker}</td>
-                            <td>{p.strategy || '\u2014'}</td>
+                            <td>{p.strategy || '—'}</td>
                             <td>{(p.direction || '').charAt(0).toUpperCase() + (p.direction || '').slice(1)}</td>
                             <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtExpiry(p.expiry)}</td>
-                            <td>{p.dte || '\u2014'}</td>
-                            <td style={{ fontWeight: 600, color: p.rc_score >= 70 ? 'var(--color-success)' : p.rc_score >= 50 ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }}>{p.rc_score || '\u2014'}</td>
-                            <td style={{ fontFamily: 'var(--font-mono)' }}>${p.entry_price || '\u2014'}</td>
-                            <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', color: pnlColor }}>{pnl != null ? `${pnl > 0 ? '+' : ''}${pnl}%` : '\u2014'}</td>
-                            <td style={{ color: 'var(--color-text-tertiary)' }}>{p.outcome_date || p.generated_at?.slice(0, 10) || '\u2014'}</td>
+                            <td>{p.dte || '—'}</td>
+                            <td style={{ fontWeight: 600, color: p.rc_score >= 70 ? 'var(--color-success)' : p.rc_score >= 50 ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }}>{p.rc_score || '—'}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)' }}>${p.entry_price || '—'}</td>
+                            <td style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', color: pnlColor }}>{pnl != null ? `${pnl > 0 ? '+' : ''}${pnl}%` : '—'}</td>
+                            <td style={{ color: 'var(--color-text-tertiary)' }}>{p.outcome_date || p.generated_at?.slice(0, 10) || '—'}</td>
                           </tr>
                         );
                       })}
@@ -178,7 +178,7 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {[
-              { n: 'Earnings Catalyst', w: ow.earnings_catalyst, d: 'Proximity to earnings \u2014 #1 IV driver. Sweet spot: 5\u201314 days out.' },
+              { n: 'Earnings Catalyst', w: ow.earnings_catalyst, d: 'Proximity to earnings — #1 IV driver. Sweet spot: 5–14 days out.' },
               { n: 'IV Context', w: ow.iv_context, d: 'IV rank vs history. Low = cheap (buy). High = expensive (sell/spread).' },
               { n: 'Directional Conviction', w: ow.directional, d: 'RSI, SMA alignment, volume. Strong = clear call/put bias.' },
               { n: 'Technical Setup', w: ow.technical, d: 'BB squeeze + RSI extremes. Breakout or mean-reversion signals.' },
@@ -200,7 +200,7 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
   } else if (!data) {
     detail = (
       <Card style={{ padding: 40, textAlign: 'center' }}>
-        <div className="pulse" style={{ fontSize: 24, marginBottom: 12 }}>{'\u27F3'}</div>
+        <div className="pulse" style={{ fontSize: 24, marginBottom: 12 }}>{'⟳'}</div>
         <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', fontWeight: 500, marginBottom: 8 }}>Forging plays for {sel}</div>
         <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{msg}</div>
       </Card>
@@ -210,7 +210,7 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
       <Card style={{ padding: 24 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700 }}>{sel}</h2>
         {data.price && <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-mono)', margin: '8px 0' }}>${data.price}</div>}
-        <div className={styles.errorBanner}>{'\u26A0'} {data.error}</div>
+        <div className={styles.errorBanner}>{'⚠'} {data.error}</div>
       </Card>
     );
   } else {
@@ -232,21 +232,21 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
                 {fetchedAt && (
                   <span style={{ fontSize: 10, fontWeight: 600, color: (Date.now() - fetchedAt) < 30000 ? 'var(--color-success)' : (Date.now() - fetchedAt) < 90000 ? 'var(--color-warning)' : 'var(--color-danger)' }}>
-                    {(Date.now() - fetchedAt) < 10000 ? '\u25CF Live' : (Date.now() - fetchedAt) < 60000 ? Math.round((Date.now() - fetchedAt) / 1000) + 's ago' : Math.round((Date.now() - fetchedAt) / 60000) + 'm ago'}
+                    {(Date.now() - fetchedAt) < 10000 ? '● Live' : (Date.now() - fetchedAt) < 60000 ? Math.round((Date.now() - fetchedAt) / 1000) + 's ago' : Math.round((Date.now() - fetchedAt) / 60000) + 'm ago'}
                   </span>
                 )}
                 <button className={styles.refreshBtn} onClick={e => { e.stopPropagation(); loadPlays(sel, true); }}>
-                  {'\uD83D\uDD04'} Refresh
+                  {'🔄'} Refresh
                 </button>
               </div>
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 10, marginTop: 14 }}>
-            <Metric label="RSI" value={p.rsi != null ? Math.round(p.rsi) : '\u2014'} color={p.rsi < 30 ? 'var(--color-success)' : p.rsi > 70 ? 'var(--color-danger)' : 'var(--color-warning)'} sub={p.rsi < 30 ? 'Oversold' : p.rsi > 70 ? 'Overbought' : 'Neutral'} />
-            <Metric label="IV 30d" value={p.iv_30d != null ? p.iv_30d + '%' : '\u2014'} color={p.iv_30d > 50 ? 'var(--color-danger)' : 'var(--color-warning)'} />
-            <Metric label="Earnings" value={p.days_to_earnings != null ? p.days_to_earnings + 'd' : '\u2014'} color={p.days_to_earnings != null && p.days_to_earnings <= 14 ? 'var(--color-success)' : 'var(--color-text-secondary)'} />
-            <Metric label="Beta" value={p.beta != null ? Number(p.beta).toFixed(1) : '\u2014'} />
-            <Metric label="Vol Ratio" value={p.vol_ratio != null ? p.vol_ratio + 'x' : '\u2014'} />
+            <Metric label="RSI" value={p.rsi != null ? Math.round(p.rsi) : '—'} color={p.rsi < 30 ? 'var(--color-success)' : p.rsi > 70 ? 'var(--color-danger)' : 'var(--color-warning)'} sub={p.rsi < 30 ? 'Oversold' : p.rsi > 70 ? 'Overbought' : 'Neutral'} />
+            <Metric label="IV 30d" value={p.iv_30d != null ? p.iv_30d + '%' : '—'} color={p.iv_30d > 50 ? 'var(--color-danger)' : 'var(--color-warning)'} />
+            <Metric label="Earnings" value={p.days_to_earnings != null ? p.days_to_earnings + 'd' : '—'} color={p.days_to_earnings != null && p.days_to_earnings <= 14 ? 'var(--color-success)' : 'var(--color-text-secondary)'} />
+            <Metric label="Beta" value={p.beta != null ? Number(p.beta).toFixed(1) : '—'} />
+            <Metric label="Vol Ratio" value={p.vol_ratio != null ? p.vol_ratio + 'x' : '—'} />
           </div>
         </Card>
 
@@ -301,7 +301,7 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
               </div>
 
               {/* Risk notes */}
-              <div className={styles.riskNotes}>{'\u26A0'} {pl.risk_notes}</div>
+              <div className={styles.riskNotes}>{'⚠'} {pl.risk_notes}</div>
             </Card>
           );
         }) : (
@@ -319,7 +319,7 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
       <div className={styles.sidebar}>
         {/* Weight tuner toggle */}
         <button className={`${styles.tunerBtn} ${showW ? styles.tunerActive : ''}`} onClick={() => setShowW(!showW)}>
-          {'\u2699'} Weight Tuner <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>{showW ? '\u25BC' : '\u25B6'}</span>
+          {'⚙'} Weight Tuner <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>{showW ? '▼' : '▶'}</span>
         </button>
 
         {showW && (

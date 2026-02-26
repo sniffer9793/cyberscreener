@@ -112,7 +112,7 @@ export function ConvictionPage({ latest }) {
                 <div className={styles.tickerMeta}>
                   <span className={styles.tickerPrice}>${r.price}</span>
                   {isBuyZone && (
-                    <span className={styles.buyZone}>{'\uD83D\uDFE2'} Buy Zone</span>
+                    <span className={styles.buyZone}>{'🟢'} Buy Zone</span>
                   )}
                 </div>
                 <Badge color={r.lt_score >= 50 ? 'var(--color-success)' : r.lt_score >= 30 ? 'var(--color-warning)' : 'var(--color-text-tertiary)'}>
@@ -138,7 +138,7 @@ export function ConvictionPage({ latest }) {
                     style={{ color: sd < -3 ? 'var(--color-success)' : sd > 3 ? 'var(--color-danger)' : 'var(--color-text-tertiary)' }}
                     title={`Short interest delta: ${sd > 0 ? '+' : ''}${sd}pp (60d)`}
                   >
-                    {sd < -3 ? '\u2193SI' : sd > 3 ? '\u2191SI' : '\u00B7'}
+                    {sd < -3 ? '↓SI' : sd > 3 ? '↑SI' : '·'}
                   </span>
                 ) : <span />}
               </div>
@@ -151,7 +151,7 @@ export function ConvictionPage({ latest }) {
       <div className={styles.detail}>
         {!sel ? (
           <Card style={{ padding: 40, textAlign: 'center' }}>
-            <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.5 }}>{'\uD83D\uDCC8'}</div>
+            <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.5 }}>{'📈'}</div>
             <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Conviction Board</div>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10 }}>
               Long-term value positions &middot; Retirement account ideas
@@ -178,7 +178,7 @@ export function ConvictionPage({ latest }) {
               />
               {psMap[sel] && (
                 <Metric
-                  label={'\u2694\uFE0F Your LT'}
+                  label={'⚔️ Your LT'}
                   value={Math.round(psMap[sel].user_lt_score)}
                   color={psMap[sel].user_lt_score >= 60 ? 'var(--color-success)' : psMap[sel].user_lt_score >= 35 ? 'var(--color-warning)' : 'var(--color-danger)'}
                   sub={`${psMap[sel].lt_delta >= 0 ? '+' : ''}${psMap[sel].lt_delta} vs system`}
@@ -191,7 +191,7 @@ export function ConvictionPage({ latest }) {
                 sub="Options opportunity"
               />
               <Metric
-                label="LT \u0394"
+                label="LT Δ"
                 value={`${L.lt_score - F.lt_score >= 0 ? '+' : ''}${L.lt_score - F.lt_score}`}
                 color={L.lt_score >= F.lt_score ? 'var(--color-success)' : 'var(--color-danger)'}
               />
@@ -201,21 +201,21 @@ export function ConvictionPage({ latest }) {
             {/* Intel layers */}
             {lr && (
               <div className={styles.layerRow}>
-                <LayerPill name="SEC" icon={'\uD83D\uDCCB'} score={lr.sec_score} />
-                <LayerPill name="Sent" icon={'\uD83D\uDCAC'} score={lr.sentiment_score} />
-                <LayerPill name="Whale" icon={'\uD83D\uDC0B'} score={lr.whale_score} />
+                <LayerPill name="SEC" icon={'📋'} score={lr.sec_score} />
+                <LayerPill name="Sent" icon={'💬'} score={lr.sentiment_score} />
+                <LayerPill name="Whale" icon={'🐋'} score={lr.whale_score} />
                 {lr.short_delta != null && Math.abs(lr.short_delta) >= 2 && (
                   <Badge
                     color={lr.short_delta < -3 ? 'var(--color-success)' : lr.short_delta > 3 ? 'var(--color-danger)' : 'var(--color-text-secondary)'}
                     variant="soft"
                   >
-                    {lr.short_delta < -3 ? '\uD83D\uDD3B SI covering' : '\uD83D\uDCC8 SI building'}
+                    {lr.short_delta < -3 ? '🔻 SI covering' : '📈 SI building'}
                   </Badge>
                 )}
-                {lr.outage_status === 'outage' && <Badge color="var(--color-danger)" variant="soft">{'\uD83D\uDD34'} OUTAGE</Badge>}
-                {lr.outage_status === 'degraded' && <Badge color="var(--color-warning)" variant="soft">{'\u26A0'} DEGRADED</Badge>}
-                {lr.breach_victim && <Badge color="var(--color-danger)" variant="soft">{'\uD83D\uDEA8'} BREACH</Badge>}
-                {lr.demand_signal && !lr.breach_victim && <Badge color="var(--color-warning)" variant="soft">{'\uD83C\uDF0B'} DEMAND</Badge>}
+                {lr.outage_status === 'outage' && <Badge color="var(--color-danger)" variant="soft">{'🔴'} OUTAGE</Badge>}
+                {lr.outage_status === 'degraded' && <Badge color="var(--color-warning)" variant="soft">{'⚠'} DEGRADED</Badge>}
+                {lr.breach_victim && <Badge color="var(--color-danger)" variant="soft">{'🚨'} BREACH</Badge>}
+                {lr.demand_signal && !lr.breach_victim && <Badge color="var(--color-warning)" variant="soft">{'🌋'} DEMAND</Badge>}
               </div>
             )}
 
@@ -239,9 +239,9 @@ export function ConvictionPage({ latest }) {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showSig ? 12 : 0 }}>
-                <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{'\uD83D\uDCE1'} Scoring Signals Feed</h2>
+                <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{'📡'} Scoring Signals Feed</h2>
                 <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
-                  {showSig ? '\u25B2 hide' : '\u25BC expand \u2014 why these scores?'}
+                  {showSig ? '▲ hide' : '▼ expand — why these scores?'}
                 </span>
               </div>
               {showSig && (
@@ -250,7 +250,7 @@ export function ConvictionPage({ latest }) {
                   {signals?.signals?.length === 0 && <div className={styles.loading}>No signals yet.</div>}
                   {signals?.signals?.map((s, i) => {
                     const col = s.impact === 'positive' ? 'var(--color-success)' : s.impact === 'negative' ? 'var(--color-danger)' : 'var(--color-text-secondary)';
-                    const ic = s.impact === 'positive' ? '\uD83D\uDFE2' : s.impact === 'negative' ? '\uD83D\uDD34' : '\u26AA';
+                    const ic = s.impact === 'positive' ? '🟢' : s.impact === 'negative' ? '🔴' : '⚪';
                     return (
                       <div key={i} className={styles.signalRow}>
                         <span style={{ fontSize: 12, flexShrink: 0 }}>{ic}</span>

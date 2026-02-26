@@ -31,17 +31,17 @@ function MarketBar() {
           return (
             <div key={idx.symbol} className={`${styles.indexCard} ${up ? styles.indexUp : dn ? styles.indexDown : ''}`}>
               <div className={styles.indexHeader}>
-                <span style={{ fontSize: 14 }}>{idx.flag || '\uD83C\uDF10'}</span>
+                <span style={{ fontSize: 14 }}>{idx.flag || '🌐'}</span>
                 <span className={`${styles.indexStatus} ${idx.is_open ? styles.statusOpen : ''}`}>
                   {idx.is_open ? 'OPEN' : 'CLOSED'}
                 </span>
               </div>
               <div className={styles.indexName}>{idx.name}</div>
               <div className={styles.indexPrice}>
-                {idx.price != null ? idx.price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '\u2014'}
+                {idx.price != null ? idx.price.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
               </div>
               <div className={styles.indexChange} style={{ color: up ? 'var(--color-success)' : dn ? 'var(--color-danger)' : 'var(--color-text-secondary)' }}>
-                {idx.change_pct != null ? `${up ? '+' : ''}${idx.change_pct.toFixed(2)}%` : '\u2014'}
+                {idx.change_pct != null ? `${up ? '+' : ''}${idx.change_pct.toFixed(2)}%` : '—'}
               </div>
             </div>
           );
@@ -61,7 +61,7 @@ function KillerPlaysWidget({ onSelectPlay }) {
   const sendAlert = async () => {
     const r = await sendKillerAlerts();
     setAlertSent(true);
-    setAlertMsg(r?.status === 'sent' ? '\u2713 Email sent' : r?.status === 'email_not_configured' ? 'Email not configured' : 'No plays found');
+    setAlertMsg(r?.status === 'sent' ? '✓ Email sent' : r?.status === 'email_not_configured' ? 'Email not configured' : 'No plays found');
     setTimeout(() => setAlertSent(false), 4000);
   };
 
@@ -73,9 +73,9 @@ function KillerPlaysWidget({ onSelectPlay }) {
   return (
     <div>
       <div className={styles.killerHeader}>
-        <h2 className={styles.sectionTitleLg}>{'\u2694\uFE0F'} Killer Plays</h2>
+        <h2 className={styles.sectionTitleLg}>{'⚔️'} Killer Plays</h2>
         <button className={styles.alertBtn} onClick={sendAlert} disabled={alertSent}>
-          {alertSent ? alertMsg : '\uD83D\uDCE7 Send Alert'}
+          {alertSent ? alertMsg : '📧 Send Alert'}
         </button>
       </div>
       <div className={styles.killerGrid}>
@@ -84,7 +84,7 @@ function KillerPlaysWidget({ onSelectPlay }) {
             <div className={styles.killerTicker}>{p.ticker}</div>
             <div className={styles.killerType}>
               <Badge color={p.direction === 'bullish' ? 'var(--color-success)' : 'var(--color-danger)'}>
-                {p.direction === 'bullish' ? '\u25B2' : '\u25BC'} {p.strategy || p.direction}
+                {p.direction === 'bullish' ? '▲' : '▼'} {p.strategy || p.direction}
               </Badge>
             </div>
             <div className={styles.killerDetail}>
@@ -134,7 +134,7 @@ export function BasilicaPage({ stats, latest, tz }) {
         <Metric label="Total Scans" value={stats.total_scans} />
         <Metric label="Universe" value={`${res.length} tickers`} />
         <Metric label="Records" value={(stats.total_score_records || 0).toLocaleString()} />
-        <Metric label="Last Scan" value={stats.last_scan ? fmtTS(stats.last_scan, tz) : '\u2014'} />
+        <Metric label="Last Scan" value={stats.last_scan ? fmtTS(stats.last_scan, tz) : '—'} />
       </div>
 
       {/* Killer Plays */}
@@ -145,9 +145,9 @@ export function BasilicaPage({ stats, latest, tz }) {
       {/* Score Momentum */}
       <Card style={{ padding: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: momEvt.length > 0 ? 14 : 8 }}>
-          <h2 className={styles.sectionTitleLg}>{'\uD83D\uDD25'} Score Momentum</h2>
+          <h2 className={styles.sectionTitleLg}>{'🔥'} Score Momentum</h2>
           <div style={{ display: 'flex', gap: 4 }}>
-            {[['all', 'All'], ['up', '\uD83D\uDCC8 Gainers'], ['down', '\uD83D\uDCC9 Losers']].map(([k, l]) => (
+            {[['all', 'All'], ['up', '📈 Gainers'], ['down', '📉 Losers']].map(([k, l]) => (
               <button key={k} onClick={() => setMomFilter(k)} className={`${styles.filterBtn} ${momFilter === k ? styles.filterActive : ''}`}>
                 {l}
               </button>
@@ -195,7 +195,7 @@ export function BasilicaPage({ stats, latest, tz }) {
               <span className={styles.leaderRank}>{i + 1}</span>
               <span className={styles.leaderTicker}>{r.ticker}</span>
               <ScoreBar score={r.opt_score} showLabel />
-              <span className={styles.leaderPrice}>RSI {r.rsi != null ? Math.round(r.rsi) : '\u2014'}</span>
+              <span className={styles.leaderPrice}>RSI {r.rsi != null ? Math.round(r.rsi) : '—'}</span>
             </div>
           ))}
         </Card>
@@ -206,10 +206,10 @@ export function BasilicaPage({ stats, latest, tz }) {
         <h2 className={styles.sectionTitleLg}>Intelligence Layers</h2>
         <div className={styles.intelGrid}>
           {[
-            { i: '\uD83D\uDCCB', n: 'SEC Filings', d: 'Insider transactions, analyst ratings, holdings' },
-            { i: '\uD83D\uDCAC', n: 'Sentiment', d: 'Social sentiment + analyst consensus' },
-            { i: '\uD83D\uDC0B', n: 'Whale Flow', d: 'Unusual options activity, block trades' },
-            { i: '\uD83D\uDEE1', n: 'Threat Intel', d: 'Live breach news, service outages, macro regime' },
+            { i: '📋', n: 'SEC Filings', d: 'Insider transactions, analyst ratings, holdings' },
+            { i: '💬', n: 'Sentiment', d: 'Social sentiment + analyst consensus' },
+            { i: '🐋', n: 'Whale Flow', d: 'Unusual options activity, block trades' },
+            { i: '🛡', n: 'Threat Intel', d: 'Live breach news, service outages, macro regime' },
           ].map(l => (
             <div key={l.n} className={styles.intelCard}>
               <div className={styles.intelHeader}>
