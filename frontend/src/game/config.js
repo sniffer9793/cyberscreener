@@ -88,10 +88,10 @@ export const DISTRICTS = [
   },
 ];
 
-// Player spawn position (center of Forum)
+// Player spawn position (Forum, above the central fountain)
 export const SPAWN = {
   x: 40 * TILE_SIZE,
-  y: 30 * TILE_SIZE,
+  y: 25 * TILE_SIZE,
 };
 
 // Movement speed (pixels per frame at 60fps)
