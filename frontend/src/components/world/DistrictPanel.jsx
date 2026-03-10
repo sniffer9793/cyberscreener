@@ -7,7 +7,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { BasilicaPage } from '../../pages/BasilicaPage';
 import { ConvictionPage } from '../../pages/ConvictionPage';
-import { AnvilPage } from '../../pages/AnvilPage';
+import { PactumPage } from '../../pages/PactumPage';
 import { ArchivePage } from '../../pages/ArchivePage';
 import s from './DistrictPanel.module.css';
 
@@ -44,8 +44,8 @@ export function DistrictPanel({ district, onClose, stats, latest, backtest, tz, 
         return <BasilicaPage stats={stats} latest={latest} tz={tz} />;
       case 'conviction':
         return <ConvictionPage latest={latest} />;
-      case 'anvil':
-        return <AnvilPage latest={latest} tz={tz} />;
+      case 'pactum':
+        return <PactumPage latest={latest} tz={tz} />;
       case 'archive':
         return <ArchivePage backtest={backtest} tz={tz} />;
       default:

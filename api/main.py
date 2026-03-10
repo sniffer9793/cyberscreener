@@ -1195,18 +1195,31 @@ def _run_scan_background(req: ScanRequest):
 def scan_status():
     return _scan_status
 
+_latest_scores_cache = {"data": None, "ts": 0, "scan_id": None}
+
 @app.get("/scores/latest")
 def get_latest_scores(limit: int = Query(100, ge=1, le=600)):
     """
     Return the most recent score for each ticker across all scans.
-    Uses a per-ticker max(scan_id) join so partial scans (e.g. 5-ticker
-    test runs) don't erase older data for tickers not in that scan.
+    Cached 30s — invalidated when scan_id changes (new scan completed).
     """
+    import time as _time
+    now = _time.time()
+
     conn = get_db()
     scan = conn.execute("SELECT id, timestamp FROM scans ORDER BY id DESC LIMIT 1").fetchone()
     if not scan:
         conn.close()
         return {"message": "No scans found.", "results": []}
+
+    # Return cache if fresh AND same scan AND same limit
+    cache_key = f"{scan['id']}:{limit}"
+    if (_latest_scores_cache["data"]
+        and (now - _latest_scores_cache["ts"]) < 30
+        and _latest_scores_cache.get("key") == cache_key):
+        conn.close()
+        return _latest_scores_cache["data"]
+
     rows = conn.execute("""
         SELECT s.*
         FROM scores s
@@ -1219,7 +1232,12 @@ def get_latest_scores(limit: int = Query(100, ge=1, le=600)):
         LIMIT ?
     """, (limit,)).fetchall()
     conn.close()
-    return {"scan_id": scan["id"], "scan_timestamp": scan["timestamp"], "results": [dict(r) for r in rows]}
+
+    result = {"scan_id": scan["id"], "scan_timestamp": scan["timestamp"], "results": [dict(r) for r in rows]}
+    _latest_scores_cache["data"] = result
+    _latest_scores_cache["ts"] = now
+    _latest_scores_cache["key"] = cache_key
+    return result
 
 @app.get("/scores/{ticker}")
 def get_ticker_scores(ticker: str, days: int = Query(90, ge=7, le=365)):
@@ -1527,57 +1545,78 @@ def _compute_rc(play: dict, ticker_data: dict) -> dict:
     breakdown["execution"] = {"points": eq, "max": 20, "detail": f"Vol {vol}, OI {oi}, Sprd {spread_pct:.0f}%"}
 
     # ── 3. Score Alignment: opt_score + LT confluence (max 20 pts) ──
+    # Relaxed thresholds — typical opt scores are 39-55, lt scores 45-75
     sa = 0
-    if opt_score >= 70:
+    if opt_score >= 65:
         sa += 12
-    elif opt_score >= 55:
-        sa += 8
+    elif opt_score >= 50:
+        sa += 9
     elif opt_score >= 40:
-        sa += 5
+        sa += 6
+    elif opt_score >= 30:
+        sa += 3
 
-    if lt_score >= 65:
+    if lt_score >= 60:
         sa += 8
-    elif lt_score >= 50:
-        sa += 5
+    elif lt_score >= 45:
+        sa += 6
     elif lt_score >= 35:
-        sa += 2
+        sa += 3
 
     sa = min(20, sa)
     breakdown["score_alignment"] = {"points": sa, "max": 20, "detail": f"Opt {opt_score}, LT {lt_score}"}
 
     # ── 4. IV Context: direction-aware IV rank (max 15 pts) ──
+    # Widened sweet spots — normal IV environments (30-60%) should still score decently
     iv = 0
     is_buying = "long" in strategy or "buy" in play.get("action", "").lower() or "debit" in strategy
     is_selling = "credit" in strategy or "sell" in play.get("action", "").lower().split("/")[0]
 
     if is_buying and not is_selling:
-        # Buying options: want low IV (cheap premium)
+        # Buying options: want lower IV (cheaper premium)
         if iv_rank < 25:
             iv += 15
-        elif iv_rank < 40:
+        elif iv_rank < 45:
             iv += 11
-        elif iv_rank < 55:
-            iv += 6
-        elif iv_rank > 75:
-            iv -= 3  # very expensive — penalty
+        elif iv_rank < 60:
+            iv += 7
+        elif iv_rank < 75:
+            iv += 3
+        else:
+            iv -= 2  # very expensive — mild penalty
     else:
-        # Selling options / credit spreads: want high IV (rich premium)
+        # Selling options / credit spreads: want higher IV (richer premium)
         if iv_rank > 70:
             iv += 15
         elif iv_rank > 50:
             iv += 11
         elif iv_rank > 35:
-            iv += 6
+            iv += 7
+        elif iv_rank > 20:
+            iv += 3
 
     iv = max(0, min(15, iv))
     breakdown["iv_context"] = {"points": iv, "max": 15, "detail": f"IV Rank {iv_rank}%, {'buying' if is_buying else 'selling'}"}
 
-    # ── 5. Catalyst Timing: earnings proximity + DTE window (max 10 pts) ──
+    # ── 5. Catalyst Timing: earnings, technical catalyst, DTE window (max 10 pts) ──
     ct = 0
+    price_above_sma20 = ticker_data.get("price_above_sma20", False)
+    price_above_sma50 = ticker_data.get("price_above_sma50", False)
+
     if days_to_earnings is not None and 0 < days_to_earnings <= dte:
         ct += 7  # earnings within play window
     elif days_to_earnings is not None and days_to_earnings <= dte * 1.5:
         ct += 4
+    else:
+        # No earnings catalyst — award points for technical catalysts instead
+        if rsi < 30 or rsi > 70:
+            ct += 5  # RSI extreme = strong mean reversion catalyst
+        elif rsi < 35 or rsi > 65:
+            ct += 3  # approaching extreme
+        if "bull" in direction and price_above_sma20 and price_above_sma50:
+            ct += 2  # strong uptrend confirmation
+        elif "bear" in direction and not price_above_sma20 and not price_above_sma50:
+            ct += 2  # strong downtrend confirmation
 
     # DTE sweet spot bonus
     if 14 <= dte <= 60:
@@ -1586,7 +1625,8 @@ def _compute_rc(play: dict, ticker_data: dict) -> dict:
         ct += 1
 
     ct = min(10, ct)
-    breakdown["catalyst"] = {"points": ct, "max": 10, "detail": f"Earnings {'in ' + str(days_to_earnings) + 'd' if days_to_earnings else 'N/A'}, DTE {dte}"}
+    catalyst_detail = f"Earnings {'in ' + str(days_to_earnings) + 'd' if days_to_earnings else 'N/A'}, DTE {dte}"
+    breakdown["catalyst"] = {"points": ct, "max": 10, "detail": catalyst_detail}
 
     # ── 6. Technical Confirmation: RSI + direction alignment (max 10 pts) ──
     tc = 0
@@ -1596,7 +1636,9 @@ def _compute_rc(play: dict, ticker_data: dict) -> dict:
         elif rsi < 30:
             tc += 6  # oversold rebound
         elif 60 < rsi <= 70:
-            tc += 3
+            tc += 4
+        elif rsi < 35:
+            tc += 5  # near oversold
         # RSI > 70 for bullish = risky, no points
     elif "bear" in direction or "put" in strategy:
         if 55 <= rsi <= 75:
@@ -1604,13 +1646,17 @@ def _compute_rc(play: dict, ticker_data: dict) -> dict:
         elif rsi > 75:
             tc += 6  # overbought reversal
         elif 40 <= rsi < 55:
-            tc += 3
+            tc += 4
+        elif rsi > 65:
+            tc += 5  # near overbought
     else:
-        # Neutral (straddle/strangle): any RSI is fine, slight bonus at extremes
+        # Neutral (straddle/strangle/iron condor)
         if rsi < 30 or rsi > 70:
-            tc += 5  # extremes = bigger move potential
+            tc += 6  # extremes = bigger move potential
         elif rsi < 40 or rsi > 60:
-            tc += 3
+            tc += 4
+        elif 40 <= rsi <= 60 and price_above_sma20:
+            tc += 3  # stable trend — good for premium selling
 
     tc = min(10, tc)
     breakdown["technical"] = {"points": tc, "max": 10, "detail": f"RSI {rsi:.0f}, {direction.split('(')[0].strip()}"}
@@ -1800,7 +1846,7 @@ def get_plays_for_ticker(ticker: str):
     if st and not st.get("running") and st.get("result"):
         return st["result"]
 
-    # Sync fallback
+    # Sync fallback — same logic as _fetch_plays_background but inline
     try:
         data = fetch_ticker_data(ticker)
         if not data:
@@ -1815,8 +1861,31 @@ def get_plays_for_ticker(ticker: str):
             price_above_sma20=data.get("price_above_sma20", True),
             price_above_sma50=data.get("price_above_sma50", True),
             perf_3m=data.get("perf_3m", 0),
+            lt_score=data.get("lt_score", 0),
+            opt_score=data.get("opt_score", 0),
+            iv_rank=data.get("iv_rank"),
+            whale_bias=data.get("whale_bias", "neutral"),
         )
-        return {"ticker": ticker, "price": data["price"], "plays": plays, "play_count": len(plays)}
+        # Score each play with unified Reality Check
+        for play in plays:
+            rc_result = _compute_rc(play, data)
+            play["rc_score"] = rc_result["score"]
+            play["rc_breakdown"] = rc_result["breakdown"]
+
+        result = {
+            "ticker": ticker, "price": data["price"],
+            "rsi": data.get("rsi"), "iv_30d": data.get("iv_30d"),
+            "iv_rank": data.get("iv_rank"),
+            "days_to_earnings": data.get("days_to_earnings"),
+            "beta": data.get("beta"), "perf_3m": data.get("perf_3m"),
+            "bb_width": data.get("bb_width"), "vol_ratio": data.get("vol_ratio"),
+            "pct_from_52w_high": data.get("pct_from_52w_high"),
+            "plays": plays, "play_count": len(plays),
+            "timestamp": datetime.now().isoformat(),
+        }
+        # Cache for 90s so subsequent requests don't re-compute
+        _plays_cache[ticker] = {"data": result, "timestamp": datetime.now().isoformat()}
+        return result
     except Exception as e:
         return {"ticker": ticker, "plays": [], "error": str(e)}
 
@@ -2078,8 +2147,16 @@ def get_weights_history(limit: int = Query(50, ge=1, le=200)):
     return {"history": history, "count": len(history)}
 
 
+_stats_cache = {"data": None, "ts": 0}
+
 @app.get("/stats")
 def get_stats():
+    """Dashboard stats — cached 60s (COUNT queries on 95K+ rows are expensive)."""
+    import time as _time
+    now = _time.time()
+    if _stats_cache["data"] and (now - _stats_cache["ts"]) < 60:
+        return _stats_cache["data"]
+
     conn = get_db()
     stats = {}
     stats["total_scans"] = conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
@@ -2103,6 +2180,8 @@ def get_stats():
         stats["top_opt_scores"] = [{"ticker": r[0], "opt_score": r[1], "lt_score": r[2]} for r in top_opt]
 
     conn.close()
+    _stats_cache["data"] = stats
+    _stats_cache["ts"] = now
     return stats
 
 

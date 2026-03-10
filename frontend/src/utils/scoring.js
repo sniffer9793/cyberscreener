@@ -75,14 +75,11 @@ export function optBreakdown(row) {
 
 /**
  * Get the Reality Check score for a play.
- * Prefers server-computed rc_score; falls back to client-side computation.
+ * Server always computes RC now — no client fallback needed.
  */
 export function getRC(play) {
   if (!play) return 0;
-  // Prefer server-computed RC (unified scorer)
-  if (play.rc_score != null) return play.rc_score;
-  // Fallback: client-side computation
-  return computeRC(play);
+  return play.rc_score || 0;
 }
 
 /**
@@ -104,65 +101,7 @@ export function rcBreakdown(play) {
   });
 }
 
-/**
- * Client-side Reality Check scoring (fallback if server RC not available).
- * Mirrors the unified server RC logic from _compute_rc().
- */
-export function computeRC(play) {
-  if (!play) return 0;
-  let score = 0;
-
-  // 1. Trade Quality (max 25)
-  const rr = play.risk_reward_ratio || 0;
-  const beDist = play.breakeven_distance_pct || Math.abs(play.pct_to_breakeven || 0);
-  let tq = 0;
-  if (rr >= 3) tq += 18;
-  else if (rr >= 2) tq += 14;
-  else if (rr >= 1) tq += 9;
-  else if (rr >= 0.5) tq += 4;
-  if (beDist < 3) tq += 7;
-  else if (beDist < 6) tq += 5;
-  else if (beDist < 10) tq += 3;
-  else if (beDist < 15) tq += 1;
-  score += Math.min(25, tq);
-
-  // 2. Execution Quality (max 20)
-  const vol = play.volume || 0;
-  const oi = play.open_interest || 0;
-  const spread = play.bid_ask_spread_pct || 999;
-  let eq = 0;
-  if (vol >= 500) eq += 6;
-  else if (vol >= 100) eq += 4;
-  else if (vol >= 30) eq += 2;
-  if (oi >= 2000) eq += 6;
-  else if (oi >= 500) eq += 4;
-  else if (oi >= 100) eq += 2;
-  if (spread < 5) eq += 8;
-  else if (spread < 10) eq += 5;
-  else if (spread < 20) eq += 2;
-  score += Math.min(20, eq);
-
-  // 3. DTE timing (max 5 — simplified without opt_score/lt_score context)
-  const dte = play.dte || 0;
-  if (dte >= 14 && dte <= 60) score += 5;
-  else if (dte >= 7 && dte <= 90) score += 3;
-
-  // 4. IV percentile if available (max 10 — simplified)
-  const ivp = play.iv_percentile || play.iv_pct || 0;
-  const dir = (play.direction || '').toLowerCase();
-  if (ivp > 0) {
-    const isBuying = dir.includes('bullish') || dir.includes('bearish');
-    if (isBuying) {
-      if (ivp < 30) score += 10;
-      else if (ivp < 50) score += 6;
-    } else {
-      if (ivp > 60) score += 10;
-      else if (ivp > 40) score += 6;
-    }
-  }
-
-  return Math.min(100, score);
-}
+// computeRC removed — server always computes unified RC now
 
 /**
  * Tempering Grades based on Sharpe ratio and drawdown.

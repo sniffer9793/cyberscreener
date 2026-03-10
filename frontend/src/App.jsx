@@ -14,7 +14,7 @@ import { RegisterPage } from './auth/RegisterPage';
 import { QuaestorCreator } from './auth/QuaestorCreator';
 import { BasilicaPage } from './pages/BasilicaPage';
 import { ConvictionPage } from './pages/ConvictionPage';
-import { AnvilPage } from './pages/AnvilPage';
+import { PactumPage } from './pages/PactumPage';
 import { ArchivePage } from './pages/ArchivePage';
 
 // Lazy-load World page (includes Phaser ~1MB) — only downloaded when user visits /world
@@ -38,22 +38,29 @@ export function App() {
   const [scanRunning, setScanRunning] = useState(false);
   const tz = getStoredTz();
 
-  // ── Load core data ──
-  const loadData = useCallback(async () => {
-    const [s, l] = await Promise.all([
-      fetchStats(),
-      fetchLatestScores(600),
-    ]);
-    if (s) setStats(s);
+  // ── Load core data (non-blocking — scores first, stats deferred) ──
+  const loadScores = useCallback(async () => {
+    const l = await fetchLatestScores(600);
     if (l) setLatest(l);
   }, []);
 
+  const loadStats = useCallback(async () => {
+    const s = await fetchStats();
+    if (s) setStats(s);
+  }, []);
+
+  const loadData = useCallback(async () => {
+    await Promise.all([loadScores(), loadStats()]);
+  }, [loadScores, loadStats]);
+
   useEffect(() => {
-    loadData();
+    // Load scores immediately (renders page), stats in parallel (non-blocking)
+    loadScores();
+    loadStats();
     // Refresh every 5 minutes
     const interval = setInterval(loadData, 300000);
     return () => clearInterval(interval);
-  }, [loadData]);
+  }, [loadScores, loadStats, loadData]);
 
   // Load backtest lazily when Archive page is visited
   useEffect(() => {
@@ -101,8 +108,8 @@ export function App() {
     setAuthMode(null);
   };
 
-  // Anvil default ticker from location state
-  const anvilTicker = location.state?.ticker || null;
+  // Pactum default ticker from location state
+  const pactumTicker = location.state?.ticker || null;
 
   // ── Auth screens (overlay the main app) ──
   if (showAuth && authMode === 'login') {
@@ -144,8 +151,8 @@ export function App() {
             element={<ConvictionPage latest={latest} />}
           />
           <Route
-            path="/anvil"
-            element={<AnvilPage latest={latest} defaultTicker={anvilTicker} tz={tz} />}
+            path="/pactum"
+            element={<PactumPage latest={latest} defaultTicker={pactumTicker} tz={tz} />}
           />
           <Route
             path="/archive"

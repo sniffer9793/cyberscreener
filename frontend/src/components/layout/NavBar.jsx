@@ -5,7 +5,7 @@ import styles from './NavBar.module.css';
 const NAV_ITEMS = [
   { to: '/', label: 'Basilica', icon: '🏛️' },
   { to: '/conviction', label: 'Conviction', icon: '📜' },
-  { to: '/anvil', label: 'Anvil', icon: '⚔️' },
+  { to: '/pactum', label: 'Pactum', icon: '⚖️' },
   { to: '/archive', label: 'Archive', icon: '📚' },
   { to: '/world', label: 'World', icon: '🗺️' },
 ];

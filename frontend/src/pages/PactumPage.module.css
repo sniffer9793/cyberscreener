@@ -1,4 +1,4 @@
-/* ── The Anvil Page ── */
+/* ── The Pactum Page ── */
 
 .layout { display: flex; gap: 16px; min-height: 60vh; }
 .sidebar { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }

@@ -47,7 +47,7 @@ export const NPC_REGISTRY = {
     dialog: [
       'Buy low, sell high — the oldest strategy in Rome.',
       'I have scrolls, analysis, and market rumors.',
-      'The Anvil is where the real trades are forged.',
+      'The Pactum is where the real contracts are sealed.',
     ],
     behavior: 'wander',
     wanderRadius: 48,
@@ -74,7 +74,7 @@ export const NPC_REGISTRY = {
     spriteKey: 'npc-vendor',
     name: 'Market Vendor',
     dialog: [
-      'Fresh analysis, hot off the scroll! Visit the Anvil for options plays.',
+      'Fresh analysis, hot off the scroll! Visit the Pactum for options contracts.',
       'Step right up! The best signals in the Subura.',
       'Conviction scores, RC grades — I have it all!',
     ],

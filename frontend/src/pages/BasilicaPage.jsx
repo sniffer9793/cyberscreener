@@ -105,7 +105,7 @@ export function BasilicaPage({ stats, latest, tz }) {
   useEffect(() => { fetchMomentumSignals(20).then(d => { if (d) setMomentum(d); }); }, []);
 
   const onSelectPlay = useCallback((ticker) => {
-    navigate('/anvil', { state: { ticker } });
+    navigate('/pactum', { state: { ticker } });
   }, [navigate]);
 
   if (!stats) return <div className={styles.loadingFull}>Loading...</div>;

@@ -4,7 +4,7 @@
  * Each building maps to a site tab:
  *   Curia      -> Conviction (stock scores)
  *   Basilica   -> Overview (market dashboard)
- *   Subura     -> Anvil (options plays)
+ *   Subura     -> Pactum (options plays)
  *   Tabularium -> Archive (backtest/research)
  */
 
@@ -21,7 +21,7 @@ import { getStoredTz } from '../utils/formatters';
 // Lazy imports for page content (code-split already by Vite)
 import { BasilicaPage } from './BasilicaPage';
 import { ConvictionPage } from './ConvictionPage';
-import { AnvilPage } from './AnvilPage';
+import { PactumPage } from './PactumPage';
 import { ArchivePage } from './ArchivePage';
 import styles from './WorldPage.module.css';
 
@@ -29,7 +29,7 @@ import styles from './WorldPage.module.css';
 const BUILDING_TAB = {
   basilica: 'basilica',
   curia: 'conviction',
-  subura: 'anvil',
+  subura: 'pactum',
   tabularium: 'archive',
 };
 
@@ -136,8 +136,8 @@ export function WorldPage() {
         return <BasilicaPage stats={stats} latest={latest} tz={tz} />;
       case 'conviction':
         return <ConvictionPage latest={latest} />;
-      case 'anvil':
-        return <AnvilPage latest={latest} defaultTicker={null} tz={tz} />;
+      case 'pactum':
+        return <PactumPage latest={latest} defaultTicker={null} tz={tz} />;
       case 'archive':
         return <ArchivePage backtest={backtest} tz={tz} />;
       default:
@@ -198,7 +198,7 @@ export function WorldPage() {
             {[
               { id: 'basilica', name: 'Basilica Julia', tab: 'Overview', color: '#665D1E', icon: '\u{1F3E6}' },
               { id: 'curia', name: 'The Curia', tab: 'Conviction', color: '#B8860B', icon: '\u{1F3DB}' },
-              { id: 'subura', name: 'The Subura', tab: 'Anvil', color: '#888', icon: '\u{2692}' },
+              { id: 'subura', name: 'The Subura', tab: 'Pactum', color: '#888', icon: '\u{2696}' },
               { id: 'tabularium', name: 'The Tabularium', tab: 'Archive', color: '#8B2500', icon: '\u{1F4DC}' },
             ].map(b => (
               <div

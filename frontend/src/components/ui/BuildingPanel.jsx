@@ -1,7 +1,7 @@
 /**
  * QUAEST.TECH — Building Panel Overlay
  * Full-screen overlay panel shown when player enters a building.
- * Renders the corresponding site tab content (Conviction, Anvil, Archive, Basilica).
+ * Renders the corresponding site tab content (Conviction, Pactum, Archive, Basilica).
  * Player can still move in background — walk out of building to auto-dismiss.
  */
 
@@ -26,9 +26,9 @@ const BUILDING_META = {
   },
   subura: {
     name: 'The Subura',
-    subtitle: 'The Anvil',
-    desc: 'Options plays, weight tuning, and Reality Check',
-    icon: '\u{2692}',  // hammer & pick
+    subtitle: 'The Pactum',
+    desc: 'Options contracts, weight tuning, and Reality Check',
+    icon: '\u{2696}',  // balance scale
     accentColor: '#888',
   },
   tabularium: {

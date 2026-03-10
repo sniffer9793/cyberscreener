@@ -1,5 +1,5 @@
 /**
- * QUAEST.TECH — The Anvil (Options/Plays Tab)
+ * QUAEST.TECH — The Pactum (Options/Plays Tab)
  * Play generation, weight tuner, Reality Check, play history.
  */
 
@@ -13,9 +13,9 @@ import { generatePlays, fetchPlayStatus, fetchPlayHistory, fetchWeights, updateW
 import { getRC, rcVerdict, rcBreakdown } from '../utils/scoring';
 import { fmtExpiry, fmtTimeOnly } from '../utils/formatters';
 import { useAuth } from '../auth/AuthContext';
-import styles from './AnvilPage.module.css';
+import styles from './PactumPage.module.css';
 
-const ANVIL_SORT_OPTIONS = [
+const PACTUM_SORT_OPTIONS = [
   { key: 'opt_score', label: 'Opt Score', fn: (a, b) => b.opt_score - a.opt_score },
   { key: 'lt_score', label: 'LT Score', fn: (a, b) => b.lt_score - a.lt_score },
   { key: 'iv_high', label: 'IV Rank (High)', fn: (a, b) => (b.iv_30d || 0) - (a.iv_30d || 0) },
@@ -32,7 +32,7 @@ function MiniMetric({ label, value, color }) {
   );
 }
 
-export function AnvilPage({ latest, defaultTicker, tz }) {
+export function PactumPage({ latest, defaultTicker, tz }) {
   const { isAdmin } = useAuth();
   const location = useLocation();
   const [sel, setSel] = useState(null);
@@ -45,7 +45,7 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
   const [playHist, setPlayHist] = useState(null);
   const [histLoading, setHistLoading] = useState(false);
   const [ow, setOw] = useState({ earnings_catalyst: 25, iv_context: 20, directional: 20, technical: 15, liquidity: 10, asymmetry: 10 });
-  const [anvilSort, setAnvilSort] = useState('opt_score');
+  const [pactumSort, setPactumSort] = useState('opt_score');
   const [playSort, setPlaySort] = useState('rc');
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -55,7 +55,7 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
   const autoRef = useRef(null);
 
   const results = latest?.results || [];
-  const sortFn = ANVIL_SORT_OPTIONS.find(s => s.key === anvilSort)?.fn || ANVIL_SORT_OPTIONS[0].fn;
+  const sortFn = PACTUM_SORT_OPTIONS.find(s => s.key === pactumSort)?.fn || PACTUM_SORT_OPTIONS[0].fn;
   const opts = [...results].sort(sortFn);
   const wt = Object.values(ow).reduce((a, b) => a + b, 0);
 
@@ -132,7 +132,7 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Card style={{ padding: 40, textAlign: 'center' }}>
           <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.5 }}>{'⚔️'}</div>
-          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>The Anvil</div>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>The Pactum</div>
           <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', maxWidth: 480, margin: '0 auto', lineHeight: 1.7 }}>
             Select a ticker to forge options plays. Each includes scoring breakdown, Reality Check, and risk/reward analysis.
           </div>
@@ -543,15 +543,15 @@ export function AnvilPage({ latest, defaultTicker, tz }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', marginBottom: 4 }}>
           <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>Sort:</span>
           <select
-            value={anvilSort}
-            onChange={e => setAnvilSort(e.target.value)}
+            value={pactumSort}
+            onChange={e => setPactumSort(e.target.value)}
             style={{
               flex: 1, background: 'var(--color-bg)', border: '1px solid var(--color-border-subtle)',
               borderRadius: 6, color: 'var(--color-text)', fontSize: 10, padding: '4px 8px',
               fontFamily: 'var(--font-mono)', cursor: 'pointer', outline: 'none',
             }}
           >
-            {ANVIL_SORT_OPTIONS.map(s => (
+            {PACTUM_SORT_OPTIONS.map(s => (
               <option key={s.key} value={s.key}>{s.label}</option>
             ))}
           </select>

@@ -61,11 +61,11 @@ export function SearchBar({ results = [] }) {
     navigate('/conviction', { state: { ticker } });
   }, [navigate]);
 
-  const handleAnvilSelect = useCallback((ticker) => {
+  const handlePactumSelect = useCallback((ticker) => {
     setQuery('');
     setIsOpen(false);
     inputRef.current?.blur();
-    navigate('/anvil', { state: { ticker } });
+    navigate('/pactum', { state: { ticker } });
   }, [navigate]);
 
   // Keyboard navigation in results
@@ -156,14 +156,14 @@ export function SearchBar({ results = [] }) {
                 Opt {t.opt_score}
               </span>
               <button
-                onMouseDown={e => { e.preventDefault(); e.stopPropagation(); handleAnvilSelect(t.ticker); }}
+                onMouseDown={e => { e.preventDefault(); e.stopPropagation(); handlePactumSelect(t.ticker); }}
                 style={{
                   border: 'none', background: 'none', cursor: 'pointer',
                   fontSize: 11, color: 'var(--color-text-tertiary)', padding: '2px 4px',
                 }}
-                title="Open in Anvil"
+                title="Open in Pactum"
               >
-                {'⚔️'}
+                {'⚖️'}
               </button>
             </div>
           ))}
