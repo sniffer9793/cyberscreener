@@ -1,25 +1,60 @@
-# CyberScreener
+# QUAEST.TECH
 
-Cybersecurity sector investment intelligence — automated scanning, scoring, and backtesting.
+Investment intelligence platform with automated scanning, scoring, options play generation, and a 3D Roman city interface.
 
-## Deploy to Railway
+**Live**: [cyber.keltonshockey.com](https://cyber.keltonshockey.com)
 
-1. Push this repo to GitHub
-2. Go to [railway.app](https://railway.app) and create a new project from the repo
-3. Add a persistent volume mounted at `/data/db`
-4. Set environment variable: `CYBERSCREENER_PASSWORD=your_password_here`
-5. Deploy — the dashboard will be available at your Railway URL
+## Architecture
 
-The scheduler runs automatically every 2 hours, scanning all cybersecurity tickers and building historical data for backtesting.
+- **Backend**: FastAPI + SQLite (Python 3.11), systemd services on DigitalOcean
+- **Frontend**: React 19 + Vite 7 SPA
+- **3D World**: Three.js voxel-based Roman city
+- **Data**: yfinance, SEC EDGAR, FinBERT sentiment, whale flow detection
+- **AI**: Claude API (Haiku) for play analysis
+
+## Pages
+
+| Route | Name | Purpose |
+|-------|------|---------|
+| `/` | Basilica | Market overview, killer plays, leaders, interactive RSI chart |
+| `/conviction` | Conviction | Full scoring table, breakdowns, intel layers |
+| `/pactum` | Pactum | Options play generation, RC scoring, AI analysis |
+| `/ticker/:symbol` | Ticker Summary | Per-ticker LT + Opt breakdowns, charts, signals |
+| `/archive` | Archive | Backtesting, quintile analysis, calibration |
+| `/world` | World | 3D Roman city with building-to-page integration |
+
+## Scoring
+
+**LT Score (0-100)**: Rule of 40, Valuation, FCF Margin, Trend, Earnings Quality, Momentum
+**Opt Score (0-100)**: Earnings Catalyst, IV Context, Directional, Technical, Liquidity, Asymmetry
+**Reality Check (0-100)**: Trade Quality, Execution, Score Alignment, IV Context, Catalyst, Technical
 
 ## Local Development
 
 ```bash
+# Backend
 cd api
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-python backfill.py --months 6   # Bootstrap historical data
 uvicorn main:app --reload --port 8000
+
+# Frontend
+cd frontend
+npm install
+npm run dev  # Vite on :5173
 ```
 
-Visit http://localhost:8000 — default password: `cyber2026`
+## Deploy to Production
+
+```bash
+# Build + push
+cd frontend && npm run build && cd ..
+git add -A && git commit -m "deploy" && git push origin main
+
+# Deploy on droplet
+ssh root@cyber.keltonshockey.com "cd /opt/cyberscreener && git pull && cd frontend && npm run build && cd .. && systemctl restart cyberscreener.service cyberscreener-scheduler.service"
+```
+
+## Universe
+
+~490+ tickers across cybersecurity, energy, defense, tech, health, financials, REITs, consumer, and industrials. Scanner runs every 30 minutes via systemd scheduler.

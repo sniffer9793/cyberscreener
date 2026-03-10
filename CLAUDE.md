@@ -14,70 +14,80 @@
 ## Project Structure
 
 ```
-cyberscreener2/
+cyberscreener/
+├── CLAUDE.md
+├── README.md
 ├── Dockerfile
-├── railway.toml
+├── railway.toml              # Legacy (now on DigitalOcean)
 ├── api/
-│   ├── main.py              # FastAPI app + all endpoints (~1,000 lines)
-│   ├── scheduler.py         # Scheduled scan daemon (every 2 hours)
-│   ├── backfill.py          # Historical data bootstrapping
+│   ├── main.py               # FastAPI app + all endpoints (~2,888 lines)
+│   ├── scheduler.py           # Scheduled scan daemon (every 30 min)
+│   ├── backfill.py            # Historical data bootstrapping
 │   ├── requirements.txt
 │   ├── core/
-│   │   ├── scanner.py       # Score computation engine (~1,743 lines)
-│   │   ├── universe.py      # Stock universe + sector definitions (~103 lines)
-│   │   └── timing.py        # Options timing intelligence (~413 lines)
+│   │   ├── scanner.py         # Score computation + play generation (~1,825 lines)
+│   │   ├── universe.py        # Cybersecurity sector universe (~102 lines)
+│   │   ├── broad_universe.py  # Broad market universe (~84 lines)
+│   │   ├── augur_weights.py   # Persona-based weight profiles (~166 lines)
+│   │   └── timing.py          # Options timing intelligence (~412 lines)
 │   ├── db/
-│   │   ├── models.py        # SQLite schema + ORM helpers (~885 lines)
-│   │   ├── migrate_timing.py
-│   │   └── migrate_sectors.py
+│   │   ├── models.py          # SQLite schema + ORM helpers (~1,058 lines)
+│   │   └── migrate_*.py       # Various migration scripts
 │   ├── backtest/
-│   │   └── engine.py        # Quintile analysis, attribution, calibration (~508 lines)
+│   │   └── engine.py          # Quintile analysis, attribution, calibration (~568 lines)
 │   └── intel/
-│       ├── sec_filings.py   # SEC EDGAR + insider transactions
-│       ├── sentiment.py     # FinBERT + keyword-bag sentiment
-│       └── earnings_calendar.py
-├── frontend/                # React + Vite SPA
+│       ├── ai_analysis.py     # Claude API (Haiku) play analysis
+│       ├── sec_filings.py     # SEC EDGAR + insider transactions
+│       ├── sentiment.py       # FinBERT + keyword-bag sentiment
+│       ├── earnings_calendar.py
+│       ├── news_intel.py      # News intelligence
+│       └── notifier.py        # Alert notifications
+├── frontend/                  # React 19 + Vite 7 SPA
 │   ├── src/
-│   │   ├── App.jsx          # Root router + data loading
+│   │   ├── App.jsx            # Root router + data loading (~180 lines)
+│   │   ├── main.jsx
 │   │   ├── api/
-│   │   │   ├── client.js    # Fetch wrapper with JWT auth
-│   │   │   └── endpoints.js # All API endpoint functions
+│   │   │   ├── client.js      # Fetch wrapper with JWT auth
+│   │   │   └── endpoints.js   # All API endpoint functions
 │   │   ├── auth/
-│   │   │   ├── AuthContext.jsx  # JWT auth state management
+│   │   │   ├── AuthContext.jsx    # JWT auth state management
 │   │   │   ├── LoginPage.jsx
 │   │   │   ├── RegisterPage.jsx
 │   │   │   └── QuaestorCreator.jsx  # Character creation
 │   │   ├── pages/
-│   │   │   ├── BasilicaPage.jsx   # Overview (market indices, killer plays, leaders)
-│   │   │   ├── ConvictionPage.jsx # Stock scores, breakdowns, intel layers
-│   │   │   ├── AnvilPage.jsx      # Options plays, weight tuner, Reality Check
-│   │   │   ├── ArchivePage.jsx    # Backtest, calibration, research
-│   │   │   └── WorldPage.jsx      # 3D voxel game + building panel integration
+│   │   │   ├── BasilicaPage.jsx   # Overview: RSI chart, killer plays, leaders (~340 lines)
+│   │   │   ├── ConvictionPage.jsx # Stock scores, breakdowns, intel layers (~368 lines)
+│   │   │   ├── PactumPage.jsx     # Options plays, RC scoring, AI analysis (~673 lines)
+│   │   │   ├── TickerPage.jsx     # Per-ticker deep dive: scores, charts, signals (~237 lines)
+│   │   │   ├── ArchivePage.jsx    # Backtest, calibration, research (~263 lines)
+│   │   │   └── WorldPage.jsx      # 3D voxel game + building panel integration (~275 lines)
 │   │   ├── components/
-│   │   │   ├── ui/           # Card, Badge, ScoreBar, BreakdownPanel, BuildingPanel, etc.
-│   │   │   ├── charts/       # SvgAreaChart, SvgPriceChart, SvgBarChart, etc.
-│   │   │   └── layout/       # Header, NavBar, Footer
+│   │   │   ├── ui/            # Card, Badge, ScoreBar, BreakdownPanel, BuildingPanel, etc.
+│   │   │   ├── charts/        # SvgAreaChart, SvgPriceChart, SvgBarChart, Interactive*, etc.
+│   │   │   ├── layout/        # Header, NavBar, Footer, SearchBar
+│   │   │   └── world/         # DistrictPanel
 │   │   ├── game/
 │   │   │   ├── VoxelGame.jsx      # React wrapper for Three.js world
 │   │   │   ├── config.js          # Constants, building defs, brand colors
 │   │   │   ├── entities/
 │   │   │   │   └── NPCData.js     # NPC registry (dialogs, behaviors, sprites)
 │   │   │   └── voxel/
-│   │   │       ├── VoxelWorld.js       # Main scene orchestrator (~860 lines)
+│   │   │       ├── VoxelWorld.js       # Main scene orchestrator (~881 lines)
 │   │   │       ├── VoxelMeshBuilder.js # Per-building mesh groups
-│   │   │       ├── BuildingDecorator.js # Architectural features (roofs, columns, etc.)
-│   │   │       ├── TextureAtlas.js     # Procedural 128×128 texture atlas (50 slots)
-│   │   │       ├── SpriteGenerator.js  # Procedural Roman character sprite sheets
-│   │   │       ├── PlayerController.js # WASD movement, camera-relative, billboard sprite
+│   │   │       ├── BuildingDecorator.js # Architectural features
+│   │   │       ├── TextureAtlas.js     # Procedural 128x128 texture atlas
+│   │   │       ├── SpriteGenerator.js  # Procedural Roman character sprites
+│   │   │       ├── PlayerController.js # WASD movement, camera-relative
 │   │   │       ├── VoxelNPC.js         # NPC patrol/wander/idle + dialog
 │   │   │       └── CameraController.js # 3rd-person orbit, follow-cam
-│   │   ├── theme/            # CSS variables, global styles, animations
-│   │   └── utils/            # formatters, scoring helpers
+│   │   ├── hooks/             # useApi, useChartDimensions, usePolling
+│   │   ├── theme/             # CSS variables, global styles, animations
+│   │   └── utils/             # formatters, scoring helpers
 │   ├── scripts/
-│   │   └── generate-map.mjs  # Tiled-format JSON map generator
-│   ├── public/assets/maps/   # Generated roman-city.json
-│   └── dist/                 # Production build (committed for VPS deploy)
+│   │   └── generate-map.mjs   # Tiled-format JSON map generator
+│   └── public/assets/maps/    # Generated roman-city.json
 └── scripts/
+    └── seed_earnings.py
 ```
 
 ---
@@ -87,119 +97,121 @@ cyberscreener2/
 | Layer | Technology |
 |-------|-----------|
 | Backend | FastAPI 0.115.6 + Uvicorn 0.34.0 (Python 3.11) |
-| Database | SQLite at `/data/db/cyberscreener.db` |
+| Database | SQLite (WAL mode) at `/data/db/cyberscreener.db` |
 | Frontend | React 19 + Vite 7 SPA |
 | 3D Engine | Three.js (voxel renderer, procedural textures/sprites) |
 | Data Sources | yfinance, SEC EDGAR, Yahoo Finance, HuggingFace FinBERT |
+| AI | Claude API (Haiku) for options play analysis |
 | Deployment | DigitalOcean VPS (systemd + nginx + Let's Encrypt) |
+
+---
+
+## Pages & Routes
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/` | BasilicaPage | Market overview with interactive RSI chart, killer plays widget, sector leaders, momentum signals |
+| `/conviction` | ConvictionPage | Full scoring table with LT/Opt breakdowns, intel layers, score history charts |
+| `/pactum` | PactumPage | Options play generation with combined conviction sort, expandable RC explainers, AI analysis |
+| `/ticker/:symbol` | TickerPage | Per-ticker deep dive: score summary, LT+Opt breakdowns, price chart, trend charts, signals |
+| `/archive` | ArchivePage | Backtesting engine, quintile analysis, calibration, score-vs-returns research |
+| `/world` | WorldPage | 3D Roman city where buildings contain site sections |
 
 ---
 
 ## The 3D World
 
-The game world is a Roman city built with Three.js voxel rendering. Each building maps to a section of the site:
+The game world is a Roman city built with Three.js voxel rendering. Each building maps to a page:
 
-| Building | Site Tab | Content |
-|----------|----------|---------|
-| **Basilica Julia** | Overview | Market indices, killer plays, momentum signals, leaders |
-| **The Curia** | Conviction Board | Long-term stock scores, breakdowns, intel layers, charts |
-| **The Subura** | The Anvil | Options plays, weight tuner, Reality Check scoring |
-| **The Tabularium** | The Archive | Backtesting, quintile analysis, calibration, research |
+| Building | Page | Content |
+|----------|------|---------|
+| **Basilica Julia** | Basilica | Market overview, killer plays, momentum, leaders |
+| **The Curia** | Conviction | Long-term stock scores, breakdowns, intel layers |
+| **The Subura** | Pactum | Options plays, RC scoring, AI analysis |
+| **The Tabularium** | Archive | Backtesting, quintile analysis, calibration |
 
-**Building entry**: Walking inside a building triggers a full-screen `BuildingPanel` overlay with the corresponding site content. Player can dismiss with ESC, click outside, or walk out.
+**Building entry**: Walking inside triggers a full-screen `BuildingPanel` overlay. Player can dismiss with ESC, click outside, or walk out.
 
 ### Key 3D Features
-- **3rd-person orbit camera** with auto-follow behind player (right-click to orbit)
-- **Procedural texture atlas** (128×128 canvas, 8×8 grid, NearestFilter pixel art)
-- **Procedural character sprites** (7 types: player, legionary, senator, merchant, scholar, guard, vendor)
-- **Sky dome** with gradient (warm blue → golden horizon)
-- **Ground shadows** under buildings and trees
-- **Atmospheric fog** for depth layering (near=25, far=90)
-- **Mediterranean lighting** (warm ambient + hemisphere fill + directional sun)
-- **Indoor/outdoor transitions** (hide exterior walls/roof, zoom camera, dim outdoor lights)
-- **Historically accurate roofs** (pitched terracotta, nave roof, flat terracotta, slate turrets)
-- **NPC behaviors** (patrol, wander, idle with dialog system)
+- 3rd-person orbit camera with auto-follow
+- Procedural texture atlas (128x128 canvas, 8x8 grid, NearestFilter pixel art)
+- Procedural character sprites (7 types: player, legionary, senator, merchant, scholar, guard, vendor)
+- Sky dome, ground shadows, atmospheric fog, Mediterranean lighting
+- Indoor/outdoor transitions (hide exterior walls/roof, zoom camera, dim lights)
+- NPC behaviors (patrol, wander, idle with dialog system)
 
 ### Map Generation
-Run `node frontend/scripts/generate-map.mjs` to regenerate the Tiled-format JSON map. Includes 4 buildings, forum plaza, natural landscape (rocky edges, boulders, pond, dirt paths, trees).
+Run `node frontend/scripts/generate-map.mjs` to regenerate the Tiled-format JSON map.
 
 ---
 
-## Local Development
+## Scoring System
 
-```bash
-# Backend
-cd api
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python backfill.py --months 6  # Bootstrap historical data
-uvicorn main:app --reload --port 8000
-
-# Frontend
-cd frontend
-npm install
-npm run dev  # Vite dev server on :5173
-```
-
-## Production Deployment (DigitalOcean VPS)
-
-**Deploy workflow**: Build frontend → commit dist → merge to main → push → SSH deploy
-
-```bash
-# On Mac
-cd frontend && npm run build
-git add dist/ && git commit -m "build"
-# Merge worktree branch to main if using worktrees
-cd /path/to/cyberscreener2
-git checkout main && git merge claude/wizardly-shamir --no-edit && git push origin main
-
-# On VPS
-ssh root@64.23.150.209 "cd /opt/cyberscreener && git pull origin main && sudo systemctl restart cyberscreener"
-```
-
-**Stack on VPS**: FastAPI (systemd service) + nginx reverse proxy + Let's Encrypt SSL.
-
----
-
-## Testing
-
-No formal test suite. Validation approaches:
-- `GET /health` — basic health check
-- `POST /calibrate?dry_run=true` — test weight calibration without applying
-- `GET /backtest/score-vs-returns?days=180` — validate scoring accuracy
-- Manual endpoint testing via curl or dashboard
-- Frontend: `npm run build` checks for compilation errors
-
-### Known Testing Gaps (from March 2026 review)
-- No unit tests for scoring components (`score_long_term`, `score_options`)
-- No tests for whale flow detection edge cases
-- No validation of synthetic IV rank accuracy (hardcoded 0.6-1.8x multipliers)
-- No tests for play generation logic or liquidity filtering
-- No integration tests for scan → backtest → calibrate pipeline
-
----
-
-## Architecture Notes
-
-### Scoring System
-
-**Long-Term Score (0-100)** — "Would you hold this for 1-3 years?"
+### Long-Term Score (0-100) — "Would you hold this for 1-3 years?"
 - Rule of 40 (25 pts), Relative Valuation (20 pts), FCF Margin (15 pts)
 - Technical Trend (15 pts), Earnings Quality (10 pts), Discount+Momentum (15 pts)
 
-**Options Score (0-100)** — "Is there an asymmetric short-term trade?"
+### Options Score (0-100) — "Is there an asymmetric short-term trade?"
 - Earnings Catalyst (25 pts), IV Context (20 pts), Directional Conviction (20 pts)
 - Technical Setup (15 pts), Liquidity (10 pts), Asymmetry (10 pts)
 
-**Sector-specific weights** defined in `api/core/universe.py` — profiles for SaaS, Energy, REIT, Defense, Financial.
+### Reality Check (0-100) — "Is this play actually tradeable?"
+Unified server-side scoring via `_compute_rc()` in main.py:
+- Trade Quality (25 pts): risk/reward, bid-ask spread, breakeven distance
+- Execution (20 pts): volume, open interest, DTE, IV percentile
+- Score Alignment (20 pts): opt_score + lt_score thresholds, elite bonus for either ≥70
+- IV Context (15 pts): buying at low IV or selling at high IV
+- Catalyst (10 pts): earnings proximity, RSI extremes, BB squeeze, trend alignment
+- Technical (10 pts): RSI zone alignment with play direction, stable trend bonus
 
-### Stock Universe (~90+ tickers)
+### Combined Conviction Score
+Used for killer plays and Pactum default sort: `opt_score * 0.6 + lt_score * 0.4`
+
+### Sector-Specific Weights
+Defined in `api/core/universe.py` and `api/core/broad_universe.py` — profiles for SaaS, Energy, REIT, Defense, Financial, etc.
+
+---
+
+## Key Backend Features
+
+### NaN Safety (scanner.py)
+All yfinance numeric data passes through `_safe_num()` and `_safe_int()` helpers that catch NaN, None, and inf values. Critical because yfinance returns NaN for volume/openInterest on illiquid options chains. Without this, `int(float('nan'))` crashes play generation.
+
+### Response Caching (main.py)
+- `/stats` endpoint: 60-second in-memory TTL cache
+- `/scores/latest` endpoint: 30-second in-memory TTL cache
+- `/market/indices`: background thread refresh every 5 minutes
+- Play generation: per-ticker cache with configurable TTL
+
+### Killer Plays (main.py `/killer-plays`)
+Quality-gated algorithm:
+1. Combined score must be ≥ 70th percentile of all scored tickers
+2. Requires opt_score ≥ 45 OR lt_score ≥ 55
+3. Quality gate: must have catalyst (earnings, RSI extreme, BB squeeze) OR strong scores (opt≥50 or lt≥60)
+4. Assigns conviction tier: HIGH (≥55), SOLID (≥45), WATCH
+5. Enriches with catalyst labels (earnings, oversold, overbought, demand signal, etc.)
+
+### Play Enrichment (main.py)
+Every generated play gets enriched with:
+- `risk_reward_ratio`, `bid_ask_spread_pct`, `iv_percentile`
+- `breakeven_distance_pct`, `rc_score`, `rc_breakdown`
+- Whale flow data, earnings dates, AI analysis (Claude Haiku)
+
+---
+
+## Stock Universe (~490+ tickers)
+
 - **Cybersecurity**: CRWD, PANW, FTNT, ZS, OKTA, CYBR, NET, S, DDOG, PLTR, etc.
 - **Energy**: CCJ, CEG, FSLR, NEE, EQIX, DLR, etc.
 - **Defense**: LMT, RTX, NOC, GD, AVAV, KTOS, etc.
-- **Broad**: S&P 500 / Nasdaq sectors (Tech, Finance, Health, Consumer, etc.)
+- **Broad Market**: Tech, Finance, Health, Consumer, Industrials, REITs (~400+ tickers)
 
-### Database Schema (SQLite)
+Scanner runs every 30 minutes via systemd scheduler service.
+
+---
+
+## Database Schema (SQLite, WAL mode)
+
 - `scans` — scan run metadata
 - `scores` — per-ticker scores per scan (all components + technicals + fundamentals)
 - `prices` — historical close prices
@@ -212,39 +224,68 @@ No formal test suite. Validation approaches:
 - `augur_profiles` — character attributes (prudentia, audacia, sapientia, etc.)
 - `refresh_tokens` — JWT rotation
 
-### Intel Layers
+---
+
+## Intel Layers
+
 - **SEC Filings**: Insider transactions (Form 4), analyst recommendations, 8-K filing counts
 - **Sentiment**: FinBERT via HuggingFace API (falls back to keyword-bag)
-- **Earnings Calendar**: Multi-source (DB → yfinance → FMP API → Yahoo scrape)
+- **Earnings Calendar**: Multi-source (DB -> yfinance -> FMP API -> Yahoo scrape)
 - **Whale Flow**: Unusual options activity detection from pre-fetched chains
+- **AI Analysis**: Claude API (Haiku) for play quality assessment
 
 ---
 
-## Important Files to Know
+## Local Development
 
-### Backend
-- `api/main.py` — All API endpoints (~1,000 lines)
-- `api/core/scanner.py` — Core scoring + play generation (~1,743 lines)
-- `api/core/universe.py` — Stock universe + sector profiles
-- `api/core/timing.py` — Options timing + horizon classification
-- `api/db/models.py` — Database schema + queries
-- `api/backtest/engine.py` — Backtesting + self-calibration
+```bash
+# Backend
+cd api
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
 
-### Frontend
-- `frontend/src/App.jsx` — Root router, data loading, auth flows
-- `frontend/src/pages/WorldPage.jsx` — Game page + building panel integration
-- `frontend/src/game/voxel/VoxelWorld.js` — Main 3D scene orchestrator
-- `frontend/src/game/config.js` — Building defs, camera constants, brand colors
-- `frontend/src/game/voxel/TextureAtlas.js` — Procedural texture generation
-- `frontend/src/game/voxel/SpriteGenerator.js` — Procedural character sprites
-- `frontend/src/components/ui/BuildingPanel.jsx` — Building overlay panel
+# Frontend
+cd frontend
+npm install
+npm run dev  # Vite dev server on :5173
+```
+
+## Production Deployment (DigitalOcean VPS)
+
+**Deploy workflow**: Push to GitHub -> SSH to droplet -> pull + build + restart services
+
+```bash
+# Build frontend + push
+cd frontend && npm run build && cd ..
+git add -A && git commit -m "deploy" && git push origin main
+
+# Deploy on droplet
+ssh root@cyber.keltonshockey.com "cd /opt/cyberscreener && git pull && cd frontend && npm run build && cd .. && systemctl restart cyberscreener.service cyberscreener-scheduler.service"
+```
+
+**Services on VPS**:
+- `cyberscreener.service` — FastAPI app via uvicorn
+- `cyberscreener-scheduler.service` — 30-min scan loop
+- nginx reverse proxy with Let's Encrypt SSL
+
+---
+
+## Testing
+
+No formal test suite. Validation approaches:
+- `GET /health` — basic health check
+- `python3 -c "import py_compile; py_compile.compile('main.py')"` — syntax check
+- `npm run build` — frontend compilation check
+- `GET /backtest/score-vs-returns?days=180` — scoring accuracy validation
+- Manual endpoint testing via curl or browser
 
 ---
 
 ## Common Tasks
 
 ### Adding a new ticker
-Edit `api/core/universe.py` — add to appropriate sector list and assign scoring profile.
+Edit `api/core/universe.py` (cyber sector) or `api/core/broad_universe.py` (broad market) — add to appropriate sector list and assign scoring profile.
 
 ### Adding a new API endpoint
 Add to `api/main.py`. Follow existing patterns (auth via JWT, background tasks for long-running ops).
@@ -254,37 +295,42 @@ Use `POST /calibrate` to auto-adjust, or edit defaults in `api/core/scanner.py`.
 
 ### Modifying the 3D world
 - **Map layout**: Edit `frontend/scripts/generate-map.mjs`, run `node generate-map.mjs`
-- **Building textures**: Edit `frontend/src/game/voxel/TextureAtlas.js` PAL colors or drawing functions
-- **Character sprites**: Edit `frontend/src/game/voxel/SpriteGenerator.js` palettes or drawing
-- **Building features**: Edit `frontend/src/game/voxel/BuildingDecorator.js`
+- **Building textures**: Edit `TextureAtlas.js` PAL colors or drawing functions
+- **Character sprites**: Edit `SpriteGenerator.js` palettes or drawing
+- **Building features**: Edit `BuildingDecorator.js`
 - **Building defs**: Edit `frontend/src/game/config.js` BUILDING_DEFS
 - **Camera/movement**: Edit `CameraController.js` or `PlayerController.js`
-- **NPCs**: Edit `frontend/src/game/entities/NPCData.js`
+- **NPCs**: Edit `NPCData.js`
 
 ### Adding content to a building
-The building panel system is in `WorldPage.jsx`. Each building ID maps to a site tab component:
+Building panel system is in `WorldPage.jsx`. Each building ID maps to a page component:
 ```
-basilica   → <BasilicaPage />
-curia      → <ConvictionPage />
-subura     → <AnvilPage />
-tabularium → <ArchivePage />
+basilica   -> <BasilicaPage />
+curia      -> <ConvictionPage />
+subura     -> <PactumPage />
+tabularium -> <ArchivePage />
 ```
-To change what content appears in a building, edit the `renderBuildingContent()` function in WorldPage.jsx.
+Edit `renderBuildingContent()` in WorldPage.jsx to change what content appears.
 
 ### Frontend build + deploy
 ```bash
 cd frontend && npm run build
-# Commit dist/, merge to main, push, then SSH deploy
+git add -A && git commit -m "deploy" && git push origin main
+ssh root@cyber.keltonshockey.com "cd /opt/cyberscreener && git pull && cd frontend && npm run build && cd .. && systemctl restart cyberscreener.service cyberscreener-scheduler.service"
 ```
 
 ---
 
 ## Current State (as of March 2026)
 
-- **~90+ tickers** across cyber/energy/defense/broad sectors
-- **React SPA frontend** with 5 tabs (Basilica, Conviction, Anvil, Archive, World)
-- **3D voxel world** with 4 buildings, each containing a site tab's content
-- **Visual upgrades complete**: sky dome, shadows, fog, warm Mediterranean palette, procedural Roman sprites
-- **Building-to-tab integration live**: walk into a building to access its tools
+- **~490+ tickers** across cyber/energy/defense/tech/health/finance/REIT/consumer/industrial sectors
+- **6 pages**: Basilica, Conviction, Pactum, Ticker Summary, Archive, World
+- **Interactive RSI chart** on Basilica with clickable bars navigating to ticker pages
+- **Killer plays** with combined conviction scoring and quality gates
+- **Pactum** with combined conviction sort, expandable RC explainers per play
+- **Ticker page** (`/ticker/:symbol`) with score summaries, breakdowns, charts, signals
+- **Unified RC scoring** computed server-side with 6 components (100pts total)
+- **NaN-safe** options chain processing prevents crashes on illiquid tickers
+- **Response caching** on /stats (60s) and /scores/latest (30s) for fast page loads
+- **3D voxel world** with 4 buildings, each containing a page's content
 - **No formal test suite** — biggest risk for refactoring
-- **Known issues**: synthetic IV rank uses unvalidated multipliers, whale flow has two entry points, play generation doesn't check option liquidity
