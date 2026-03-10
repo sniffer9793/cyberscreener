@@ -16,6 +16,7 @@ import { BasilicaPage } from './pages/BasilicaPage';
 import { ConvictionPage } from './pages/ConvictionPage';
 import { PactumPage } from './pages/PactumPage';
 import { ArchivePage } from './pages/ArchivePage';
+import { TickerPage } from './pages/TickerPage';
 
 // Lazy-load World page (includes Phaser ~1MB) — only downloaded when user visits /world
 const WorldPage = lazy(() => import('./pages/WorldPage').then(m => ({ default: m.WorldPage })));
@@ -153,6 +154,10 @@ export function App() {
           <Route
             path="/pactum"
             element={<PactumPage latest={latest} defaultTicker={pactumTicker} tz={tz} />}
+          />
+          <Route
+            path="/ticker/:symbol"
+            element={<TickerPage latest={latest} tz={tz} />}
           />
           <Route
             path="/archive"

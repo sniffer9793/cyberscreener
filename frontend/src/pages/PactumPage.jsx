@@ -16,12 +16,47 @@ import { useAuth } from '../auth/AuthContext';
 import styles from './PactumPage.module.css';
 
 const PACTUM_SORT_OPTIONS = [
+  { key: 'combined', label: 'Conviction (Combined)', fn: (a, b) => ((b.opt_score || 0) * 0.6 + (b.lt_score || 0) * 0.4) - ((a.opt_score || 0) * 0.6 + (a.lt_score || 0) * 0.4) },
   { key: 'opt_score', label: 'Opt Score', fn: (a, b) => b.opt_score - a.opt_score },
   { key: 'lt_score', label: 'LT Score', fn: (a, b) => b.lt_score - a.lt_score },
   { key: 'iv_high', label: 'IV Rank (High)', fn: (a, b) => (b.iv_30d || 0) - (a.iv_30d || 0) },
   { key: 'earnings', label: 'Earnings Soon', fn: (a, b) => (a.days_to_earnings || 999) - (b.days_to_earnings || 999) },
   { key: 'rsi_low', label: 'RSI (Oversold)', fn: (a, b) => (a.rsi || 50) - (b.rsi || 50) },
 ];
+
+// RC component descriptions for explainer
+const RC_EXPLANATIONS = {
+  'Trade Quality': {
+    good: 'Strong risk/reward ratio with close breakeven — high probability trade.',
+    ok: 'Decent risk/reward but breakeven could be tighter.',
+    poor: 'Unfavorable risk/reward ratio or breakeven too far from current price.',
+  },
+  'Execution': {
+    good: 'High volume, strong open interest, tight bid-ask spread — easy fills.',
+    ok: 'Moderate liquidity. May see some slippage on fills.',
+    poor: 'Low volume or wide spreads — difficult to get good execution.',
+  },
+  'Score Align': {
+    good: 'Both LT and Options scores confirm this play direction.',
+    ok: 'Partial alignment — one score supports the trade.',
+    poor: 'Scores don\'t support this play type. Conflicting signals.',
+  },
+  'IV Context': {
+    good: 'IV environment favorable for this strategy type.',
+    ok: 'IV is neutral — not ideal but not adverse.',
+    poor: 'IV working against you. Buying expensive or selling cheap.',
+  },
+  'Catalyst': {
+    good: 'Strong catalyst present — earnings, RSI extreme, or trend alignment.',
+    ok: 'Moderate catalyst. Timing is acceptable but not ideal.',
+    poor: 'No clear catalyst to drive the expected move in time.',
+  },
+  'Technical': {
+    good: 'Technical indicators confirm the play direction.',
+    ok: 'Mixed technicals — some support, some resistance.',
+    poor: 'Technicals diverge from play direction.',
+  },
+};
 
 function MiniMetric({ label, value, color }) {
   return (
@@ -45,10 +80,11 @@ export function PactumPage({ latest, defaultTicker, tz }) {
   const [playHist, setPlayHist] = useState(null);
   const [histLoading, setHistLoading] = useState(false);
   const [ow, setOw] = useState({ earnings_catalyst: 25, iv_context: 20, directional: 20, technical: 15, liquidity: 10, asymmetry: 10 });
-  const [pactumSort, setPactumSort] = useState('opt_score');
+  const [pactumSort, setPactumSort] = useState('combined');
   const [playSort, setPlaySort] = useState('rc');
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [expandedRC, setExpandedRC] = useState(new Set());
 
   const poller = useRef(null);
   const timer = useRef(null);
@@ -334,19 +370,28 @@ export function PactumPage({ latest, defaultTicker, tz }) {
                 </div>
               </div>
 
-              {/* RC score bar with breakdown tooltip */}
-              <div className={styles.rcBar} style={{ background: verdict.color + '08', borderBottom: `1px solid ${verdict.color}20`, position: 'relative' }}>
+              {/* RC score bar with expandable breakdown */}
+              <div
+                className={styles.rcBar}
+                style={{ background: verdict.color + '08', borderBottom: `1px solid ${verdict.color}20`, cursor: 'pointer' }}
+                onClick={() => setExpandedRC(prev => {
+                  const next = new Set(prev);
+                  next.has(i) ? next.delete(i) : next.add(i);
+                  return next;
+                })}
+              >
                 <div className={styles.rcBadge} style={{ background: verdict.color + '15', color: verdict.color }}>{rcScore}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: verdict.color }}>{verdict.label}</div>
                     <div style={{ fontSize: 10, color: 'var(--color-text-secondary)' }}>Reality Check</div>
+                    <span style={{ fontSize: 9, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>{expandedRC.has(i) ? '▲ hide' : '▼ why?'}</span>
                   </div>
                   {/* RC component mini-bars */}
                   {pl._breakdown && pl._breakdown.length > 0 && (
                     <div style={{ display: 'flex', gap: 2, marginTop: 6 }}>
                       {pl._breakdown.map((comp, ci) => (
-                        <div key={ci} title={`${comp.name}: ${comp.points}/${comp.max} — ${comp.detail}`}
+                        <div key={ci} title={`${comp.name}: ${comp.points}/${comp.max}`}
                           style={{ flex: comp.max, height: 4, borderRadius: 2, background: 'var(--color-bg)', overflow: 'hidden' }}>
                           <div style={{
                             width: `${comp.max > 0 ? (comp.points / comp.max) * 100 : 0}%`,
@@ -365,6 +410,53 @@ export function PactumPage({ latest, defaultTicker, tz }) {
                   </div>
                 )}
               </div>
+
+              {/* Expanded RC Explainer */}
+              {expandedRC.has(i) && pl._breakdown && pl._breakdown.length > 0 && (
+                <div style={{ padding: '12px 20px', background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border-subtle)' }}
+                  onClick={e => e.stopPropagation()}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-secondary)', marginBottom: 10 }}>
+                    Reality Check Breakdown — {rcScore}/100
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {pl._breakdown.map((comp, ci) => {
+                      const pct = comp.max > 0 ? (comp.points / comp.max) * 100 : 0;
+                      const tier = pct >= 70 ? 'good' : pct >= 40 ? 'ok' : 'poor';
+                      const barColor = pct >= 70 ? 'var(--color-success)' : pct >= 40 ? 'var(--color-warning)' : 'var(--color-danger)';
+                      const explanation = RC_EXPLANATIONS[comp.name]?.[tier] || comp.detail || '';
+                      return (
+                        <div key={ci} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                          <div style={{ minWidth: 80 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text)' }}>{comp.icon} {comp.name}</div>
+                            <div style={{ fontSize: 12, fontWeight: 800, fontFamily: 'var(--font-mono)', color: barColor }}>
+                              {comp.points}/{comp.max}
+                            </div>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ height: 6, borderRadius: 3, background: 'var(--color-border-subtle)', overflow: 'hidden', marginBottom: 4 }}>
+                              <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: barColor, transition: 'width 0.3s ease' }} />
+                            </div>
+                            <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>
+                              {comp.detail || explanation}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Summary verdict */}
+                  <div style={{
+                    marginTop: 10, padding: '8px 12px', borderRadius: 8,
+                    background: verdict.color + '10', borderLeft: `3px solid ${verdict.color}`,
+                    fontSize: 11, color: 'var(--color-text)', lineHeight: 1.5,
+                  }}>
+                    {rcScore >= 70 ? 'This play has strong fundamentals across most criteria. Proceed with normal position sizing.'
+                     : rcScore >= 50 ? 'Caution — some components are weak. Consider smaller size or wait for better entry.'
+                     : rcScore >= 30 ? 'Multiple red flags. Only take this if you have a strong conviction thesis beyond the numbers.'
+                     : 'This play fails most quality checks. High risk of poor execution or unfavorable conditions.'}
+                  </div>
+                </div>
+              )}
 
               {/* Metrics grid */}
               <div className={styles.playMetrics}>

@@ -53,7 +53,8 @@
 .momAge { font-size: 10px; color: var(--color-text-tertiary); white-space: nowrap; margin-left: 4px; }
 
 /* Leaders */
-.leaderRow { display: grid; grid-template-columns: 20px 56px 1fr 60px; align-items: center; gap: 8px; padding: 5px 0; }
+.leaderRow { display: grid; grid-template-columns: 20px 56px 1fr 60px; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 6px; transition: background var(--transition-fast); }
+.leaderRow:hover { background: var(--imperial-purple-glow); }
 .leaderRank { font-size: 11px; color: var(--color-text-tertiary); font-weight: 600; }
 .leaderTicker { font-size: 13px; font-weight: 700; font-family: var(--font-mono); }
 .leaderPrice { font-size: 12px; color: var(--color-text-secondary); text-align: right; font-family: var(--font-mono); }

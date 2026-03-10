@@ -52,13 +52,12 @@ export function SearchBar({ results = [] }) {
     return () => document.removeEventListener('keydown', handleKey);
   }, []);
 
-  // Navigate on selection
+  // Navigate on selection — go to ticker summary page
   const handleSelect = useCallback((ticker) => {
     setQuery('');
     setIsOpen(false);
     inputRef.current?.blur();
-    // Navigate to conviction with the ticker selected
-    navigate('/conviction', { state: { ticker } });
+    navigate(`/ticker/${ticker}`);
   }, [navigate]);
 
   const handlePactumSelect = useCallback((ticker) => {

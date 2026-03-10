@@ -1,0 +1,57 @@
+/* ── Ticker Summary Page ── */
+
+.actionBtn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--imperial-purple);
+  background: var(--imperial-purple-glow);
+  color: var(--imperial-purple);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+}
+.actionBtn:hover {
+  background: var(--imperial-purple);
+  color: #fff;
+}
+
+.actionBtnSecondary {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+}
+.actionBtnSecondary:hover {
+  border-color: var(--imperial-purple);
+  color: var(--imperial-purple);
+}
+
+.navLink {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+}
+.navLink:hover {
+  border-color: var(--imperial-purple);
+  color: var(--imperial-purple);
+  background: var(--imperial-purple-glow);
+}
+
+@media (max-width: 768px) {
+  .actionBtn, .actionBtnSecondary { font-size: 11px; padding: 6px 12px; }
+}

@@ -1,7 +1,7 @@
 /**
  * QUAEST.TECH — The Basilica (Overview)
  * Dashboard overview with market indices, killer plays, momentum signals,
- * LT/Opt leaders, intel layers, and RSI overview.
+ * LT/Opt leaders, intel layers, and interactive RSI overview.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -51,12 +51,12 @@ function MarketBar() {
   );
 }
 
-function KillerPlaysWidget({ onSelectPlay }) {
+function KillerPlaysWidget({ onSelectPlay, navigate }) {
   const [plays, setPlays] = useState(null);
   const [alertSent, setAlertSent] = useState(false);
   const [alertMsg, setAlertMsg] = useState('');
 
-  useEffect(() => { fetchKillerPlays(6).then(d => { if (d) setPlays(d); }); }, []);
+  useEffect(() => { fetchKillerPlays(8).then(d => { if (d) setPlays(d); }); }, []);
 
   const sendAlert = async () => {
     const r = await sendKillerAlerts();
@@ -68,30 +68,133 @@ function KillerPlaysWidget({ onSelectPlay }) {
   if (!plays) return <div className={styles.loading}>Loading killer plays...</div>;
 
   const items = plays.killer_plays || plays.plays || [];
-  if (!items.length) return <div className={styles.loading}>No high-conviction plays found.</div>;
+  if (!items.length) return <div className={styles.loading}>No high-conviction plays found this cycle.</div>;
 
   return (
     <div>
       <div className={styles.killerHeader}>
-        <h2 className={styles.sectionTitleLg}>{'⚔️'} Killer Plays</h2>
+        <div>
+          <h2 className={styles.sectionTitleLg} style={{ marginBottom: 2 }}>{'⚔️'} Killer Plays</h2>
+          <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+            Top-conviction tickers: high combined score, no threats. Click to explore.
+          </div>
+        </div>
         <button className={styles.alertBtn} onClick={sendAlert} disabled={alertSent}>
           {alertSent ? alertMsg : '📧 Send Alert'}
         </button>
       </div>
       <div className={styles.killerGrid}>
-        {items.slice(0, 6).map((p, i) => (
-          <div key={i} className={styles.killerCard} onClick={() => onSelectPlay?.(p.ticker)}>
-            <div className={styles.killerTicker}>{p.ticker}</div>
-            <div className={styles.killerType}>
-              <Badge color={p.direction === 'bullish' ? 'var(--color-success)' : 'var(--color-danger)'}>
-                {p.direction === 'bullish' ? '▲' : '▼'} {p.strategy || p.direction}
-              </Badge>
+        {items.slice(0, 8).map((p, i) => {
+          const combined = p.combined_score || Math.round((p.opt_score || 0) * 0.6 + (p.lt_score || 0) * 0.4);
+          const dirColor = p.direction === 'bullish' ? 'var(--color-success)' : p.direction === 'bearish' ? 'var(--color-danger)' : 'var(--imperial-purple)';
+          return (
+            <div key={i} className={styles.killerCard} onClick={() => navigate(`/ticker/${p.ticker}`)}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                <div className={styles.killerTicker}>{p.ticker}</div>
+                <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'var(--font-mono)', color: dirColor }}>{combined}</div>
+              </div>
+              <div className={styles.killerType}>
+                <Badge color={dirColor}>
+                  {p.direction_label || (p.direction === 'bullish' ? '▲ Bullish' : p.direction === 'bearish' ? '▼ Bearish' : '↔ Neutral')}
+                </Badge>
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                <span style={{ fontSize: 9, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>LT {p.lt_score}</span>
+                <span style={{ fontSize: 9, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>Opt {p.opt_score}</span>
+              </div>
+              {p.catalyst && <div className={styles.killerDetail}>{p.catalyst}</div>}
             </div>
-            <div className={styles.killerDetail}>
-              {p.strike && `$${p.strike}`} {p.expiry && `exp ${p.expiry}`}
-            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Interactive RSI chart — click bars to navigate to ticker page */
+function RSIChart({ data, navigate }) {
+  const [hoveredTicker, setHoveredTicker] = useState(null);
+
+  if (!data || !data.length) return null;
+
+  // Filter to only show tickers with valid RSI and sort by RSI
+  const sorted = [...data].filter(d => d.rsi != null && !isNaN(d.rsi)).sort((a, b) => a.rsi - b.rsi);
+  const oversold = sorted.filter(d => d.rsi < 30).length;
+  const overbought = sorted.filter(d => d.rsi > 70).length;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div>
+          <h2 className={styles.sectionTitleLg} style={{ marginBottom: 2 }}>RSI Overview</h2>
+          <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+            Click any bar to view ticker details. {oversold > 0 && <span style={{ color: 'var(--color-success)' }}>{oversold} oversold</span>}
+            {oversold > 0 && overbought > 0 && ' · '}
+            {overbought > 0 && <span style={{ color: 'var(--color-danger)' }}>{overbought} overbought</span>}
           </div>
-        ))}
+        </div>
+        {hoveredTicker && (
+          <div style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--imperial-purple)' }}>
+            {hoveredTicker.ticker}: RSI {Math.round(hoveredTicker.rsi)}
+          </div>
+        )}
+      </div>
+      <div style={{ position: 'relative', width: '100%', height: 350 }}>
+        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+          {/* RSI zone lines */}
+          <line x1={0} y1={70} x2={100} y2={70} stroke="var(--color-success)" strokeWidth={0.2} strokeDasharray="1,1" />
+          <line x1={0} y1={30} x2={100} y2={30} stroke="var(--color-danger)" strokeWidth={0.2} strokeDasharray="1,1" />
+          {[0, 25, 50, 75, 100].map(y => (
+            <line key={y} x1={0} y1={y} x2={100} y2={y} stroke="var(--color-border-subtle)" strokeWidth={0.2} />
+          ))}
+          {sorted.map((d, i) => {
+            const w = 100 / sorted.length;
+            const rsi = d.rsi || 50;
+            const barH = (rsi / 100) * 95;
+            const c = rsi < 30 ? 'var(--color-success)' : rsi > 70 ? 'var(--color-danger)' : 'var(--color-warning)';
+            return (
+              <rect
+                key={i}
+                x={i * w + w * 0.08}
+                y={100 - barH}
+                width={w * 0.84}
+                height={Math.max(barH, 0.5)}
+                fill={c}
+                opacity={hoveredTicker?.ticker === d.ticker ? 1 : 0.7}
+                rx={0.5}
+                style={{ cursor: 'pointer', transition: 'opacity 0.15s' }}
+                onMouseEnter={() => setHoveredTicker(d)}
+                onMouseLeave={() => setHoveredTicker(null)}
+                onClick={() => navigate(`/ticker/${d.ticker}`)}
+              />
+            );
+          })}
+        </svg>
+        {/* Y-axis labels */}
+        <div style={{ position: 'absolute', left: -24, top: 0, bottom: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pointerEvents: 'none' }}>
+          {[100, 70, 50, 30, 0].map(v => (
+            <span key={v} style={{ fontSize: 8, color: v === 30 ? 'var(--color-success)' : v === 70 ? 'var(--color-danger)' : 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>{v}</span>
+          ))}
+        </div>
+      </div>
+      {/* Ticker labels for oversold/overbought extremes */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, padding: '0 2px' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {sorted.filter(d => d.rsi < 30).slice(0, 5).map(d => (
+            <span key={d.ticker} onClick={() => navigate(`/ticker/${d.ticker}`)}
+              style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--color-success)', cursor: 'pointer', fontWeight: 700 }}>
+              {d.ticker}
+            </span>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {sorted.filter(d => d.rsi > 70).slice(-5).map(d => (
+            <span key={d.ticker} onClick={() => navigate(`/ticker/${d.ticker}`)}
+              style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--color-danger)', cursor: 'pointer', fontWeight: 700 }}>
+              {d.ticker}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -104,19 +207,20 @@ export function BasilicaPage({ stats, latest, tz }) {
 
   useEffect(() => { fetchMomentumSignals(20).then(d => { if (d) setMomentum(d); }); }, []);
 
-  const onSelectPlay = useCallback((ticker) => {
-    navigate('/pactum', { state: { ticker } });
-  }, [navigate]);
-
-  if (!stats) return <div className={styles.loadingFull}>Loading...</div>;
+  if (!stats && !latest) return <div className={styles.loadingFull}>Loading...</div>;
 
   const res = latest?.results || [];
   const topLT = res.slice(0, 10);
   const topOpt = [...res].sort((a, b) => b.opt_score - a.opt_score).slice(0, 10);
-  const rsiData = [...res].sort((a, b) => a.rsi - b.rsi);
   const momEvt = (momentum?.events || []).filter(e =>
     momFilter === 'all' || (momFilter === 'up' && e.impact === 'positive') || (momFilter === 'down' && e.impact === 'negative')
   );
+
+  // Compute aggregate metrics
+  const avgLT = res.length > 0 ? (res.reduce((sum, r) => sum + (r.lt_score || 0), 0) / res.length).toFixed(1) : '—';
+  const avgOpt = res.length > 0 ? (res.reduce((sum, r) => sum + (r.opt_score || 0), 0) / res.length).toFixed(1) : '—';
+  const oversold = res.filter(r => r.rsi != null && r.rsi < 30).length;
+  const earningsSoon = res.filter(r => r.days_to_earnings != null && r.days_to_earnings <= 14).length;
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -129,17 +233,19 @@ export function BasilicaPage({ stats, latest, tz }) {
       {/* Market indices */}
       <Card style={{ padding: 16 }}><MarketBar /></Card>
 
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
-        <Metric label="Total Scans" value={stats.total_scans} />
+      {/* Stats — improved with actionable metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
         <Metric label="Universe" value={`${res.length} tickers`} />
-        <Metric label="Records" value={(stats.total_score_records || 0).toLocaleString()} />
-        <Metric label="Last Scan" value={stats.last_scan ? fmtTS(stats.last_scan, tz) : '—'} />
+        <Metric label="Avg LT Score" value={avgLT} color={Number(avgLT) >= 45 ? 'var(--color-success)' : 'var(--color-warning)'} />
+        <Metric label="Avg Opt Score" value={avgOpt} color={Number(avgOpt) >= 35 ? 'var(--color-success)' : 'var(--color-warning)'} />
+        <Metric label="Oversold" value={oversold} color={oversold > 0 ? 'var(--color-success)' : 'var(--color-text-secondary)'} sub="RSI < 30" />
+        <Metric label="Earnings Soon" value={earningsSoon} color={earningsSoon > 0 ? 'var(--imperial-purple)' : 'var(--color-text-secondary)'} sub="Within 14d" />
+        <Metric label="Last Scan" value={stats?.last_scan ? fmtTS(stats.last_scan, tz) : '—'} />
       </div>
 
       {/* Killer Plays */}
       <Card style={{ padding: 20 }}>
-        <KillerPlaysWidget onSelectPlay={onSelectPlay} />
+        <KillerPlaysWidget onSelectPlay={(ticker) => navigate(`/ticker/${ticker}`)} navigate={navigate} />
       </Card>
 
       {/* Score Momentum */}
@@ -164,7 +270,7 @@ export function BasilicaPage({ stats, latest, tz }) {
               const ageMs = e.scan_ts ? Date.now() - new Date(e.scan_ts.includes('T') ? e.scan_ts : e.scan_ts.replace(' ', 'T') + 'Z') : 0;
               const age = ageMs > 0 ? (ageMs < 3600000 ? Math.round(ageMs / 60000) + 'm' : Math.round(ageMs / 3600000) + 'h') + ' ago' : '';
               return (
-                <div key={i} className={styles.momRow} onClick={() => navigate('/conviction')} style={{ borderLeftColor: col + '30' }}>
+                <div key={i} className={styles.momRow} onClick={() => navigate(`/ticker/${e.ticker}`)} style={{ borderLeftColor: col + '30' }}>
                   <span className={styles.momTicker}>{e.ticker}</span>
                   <span className={styles.momText}>{e.signal_text}</span>
                   <span className={styles.momAge}>{age}</span>
@@ -175,12 +281,12 @@ export function BasilicaPage({ stats, latest, tz }) {
         )}
       </Card>
 
-      {/* Leaders */}
+      {/* Leaders — now clickable to ticker page */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <Card style={{ padding: 20 }}>
           <h2 className={styles.sectionTitleLg}>Long-Term Leaders</h2>
           {topLT.map((r, i) => (
-            <div key={r.ticker} className={styles.leaderRow}>
+            <div key={r.ticker} className={styles.leaderRow} onClick={() => navigate(`/ticker/${r.ticker}`)} style={{ cursor: 'pointer', borderRadius: 6, padding: '5px 4px' }}>
               <span className={styles.leaderRank}>{i + 1}</span>
               <span className={styles.leaderTicker}>{r.ticker}</span>
               <ScoreBar score={r.lt_score} showLabel />
@@ -191,7 +297,7 @@ export function BasilicaPage({ stats, latest, tz }) {
         <Card style={{ padding: 20 }}>
           <h2 className={styles.sectionTitleLg}>Options Leaders</h2>
           {topOpt.map((r, i) => (
-            <div key={r.ticker} className={styles.leaderRow}>
+            <div key={r.ticker} className={styles.leaderRow} onClick={() => navigate(`/ticker/${r.ticker}`)} style={{ cursor: 'pointer', borderRadius: 6, padding: '5px 4px' }}>
               <span className={styles.leaderRank}>{i + 1}</span>
               <span className={styles.leaderTicker}>{r.ticker}</span>
               <ScoreBar score={r.opt_score} showLabel />
@@ -223,17 +329,10 @@ export function BasilicaPage({ stats, latest, tz }) {
         </div>
       </Card>
 
-      {/* RSI Overview */}
-      {rsiData.length > 0 && (
-        <Card style={{ padding: 20 }}>
-          <h2 className={styles.sectionTitleLg}>RSI Overview</h2>
-          <SvgBarChart
-            data={rsiData}
-            dataKey="rsi"
-            labelKey="ticker"
-            height={220}
-            colorFn={(d) => d.rsi < 30 ? 'var(--color-success)' : d.rsi > 70 ? 'var(--color-danger)' : 'var(--color-warning)'}
-          />
+      {/* RSI Overview — interactive, larger */}
+      {res.length > 0 && (
+        <Card style={{ padding: '20px 20px 20px 44px' }}>
+          <RSIChart data={res} navigate={navigate} />
         </Card>
       )}
     </div>

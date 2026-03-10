@@ -18,12 +18,31 @@ Options Score (max 100): Is there an asymmetric short-term trade?
   - Asymmetry (10 pts): Expected move vs typical move
 """
 
+import math
 import yfinance as yf
 import pandas as pd
 import numpy as np
 import time
 import logging
 from datetime import datetime, timedelta
+
+
+def _safe_num(v, default=0):
+    """Convert a value to a number, replacing NaN/None/inf with default."""
+    if v is None:
+        return default
+    try:
+        f = float(v)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(v, default=0):
+    """Convert a value to int, replacing NaN/None/inf with default."""
+    return int(_safe_num(v, default))
 
 try:
     from core.universe import (
@@ -395,14 +414,14 @@ def detect_whale_flow_from_chains(fetched_chains, current_price):
             if df.empty:
                 continue
             for _, row in df.iterrows():
-                strike = row.get("strike", 0)
-                vol = int(row.get("volume", 0) or 0)
-                oi = int(row.get("openInterest", 0) or 0)
-                iv = float(row.get("impliedVolatility", 0) or 0)
-                bid = float(row.get("bid", 0) or 0)
-                ask = float(row.get("ask", 0) or 0)
+                strike = _safe_num(row.get("strike", 0))
+                vol = _safe_int(row.get("volume", 0))
+                oi = _safe_int(row.get("openInterest", 0))
+                iv = _safe_num(row.get("impliedVolatility", 0))
+                bid = _safe_num(row.get("bid", 0))
+                ask = _safe_num(row.get("ask", 0))
                 itm = row.get("inTheMoney", False)
-                mid_price = (bid + ask) / 2 if ask > 0 else float(row.get("lastPrice", 0) or 0)
+                mid_price = (bid + ask) / 2 if ask > 0 else _safe_num(row.get("lastPrice", 0))
                 premium_total = vol * mid_price * 100
                 if side == "call":
                     total_call_volume += vol
@@ -511,15 +530,15 @@ def detect_whale_flow(ticker_obj, current_price, expiry_dates):
                 continue
 
             for _, row in df.iterrows():
-                strike = row.get("strike", 0)
-                vol = int(row.get("volume", 0) or 0)
-                oi = int(row.get("openInterest", 0) or 0)
-                iv = float(row.get("impliedVolatility", 0) or 0)
-                bid = float(row.get("bid", 0) or 0)
-                ask = float(row.get("ask", 0) or 0)
+                strike = _safe_num(row.get("strike", 0))
+                vol = _safe_int(row.get("volume", 0))
+                oi = _safe_int(row.get("openInterest", 0))
+                iv = _safe_num(row.get("impliedVolatility", 0))
+                bid = _safe_num(row.get("bid", 0))
+                ask = _safe_num(row.get("ask", 0))
                 itm = row.get("inTheMoney", False)
 
-                mid_price = (bid + ask) / 2 if ask > 0 else float(row.get("lastPrice", 0) or 0)
+                mid_price = (bid + ask) / 2 if ask > 0 else _safe_num(row.get("lastPrice", 0))
                 premium_total = vol * mid_price * 100  # Total $ flowing
 
                 # Track totals
@@ -1149,23 +1168,25 @@ def fetch_options_chain(ticker):
                 for _, r in chain.calls.iterrows():
                     chains.append({
                         "type": "call", "expiry": exp,
-                        "strike": r["strike"],
-                        "lastPrice": r.get("lastPrice", 0),
-                        "bid": r.get("bid", 0), "ask": r.get("ask", 0),
-                        "volume": r.get("volume", 0) or 0,
-                        "openInterest": r.get("openInterest", 0) or 0,
-                        "iv": r.get("impliedVolatility", 0) or 0,
+                        "strike": _safe_num(r["strike"]),
+                        "lastPrice": _safe_num(r.get("lastPrice", 0)),
+                        "bid": _safe_num(r.get("bid", 0)),
+                        "ask": _safe_num(r.get("ask", 0)),
+                        "volume": _safe_num(r.get("volume", 0)),
+                        "openInterest": _safe_num(r.get("openInterest", 0)),
+                        "iv": _safe_num(r.get("impliedVolatility", 0)),
                         "inTheMoney": r.get("inTheMoney", False),
                     })
                 for _, r in chain.puts.iterrows():
                     chains.append({
                         "type": "put", "expiry": exp,
-                        "strike": r["strike"],
-                        "lastPrice": r.get("lastPrice", 0),
-                        "bid": r.get("bid", 0), "ask": r.get("ask", 0),
-                        "volume": r.get("volume", 0) or 0,
-                        "openInterest": r.get("openInterest", 0) or 0,
-                        "iv": r.get("impliedVolatility", 0) or 0,
+                        "strike": _safe_num(r["strike"]),
+                        "lastPrice": _safe_num(r.get("lastPrice", 0)),
+                        "bid": _safe_num(r.get("bid", 0)),
+                        "ask": _safe_num(r.get("ask", 0)),
+                        "volume": _safe_num(r.get("volume", 0)),
+                        "openInterest": _safe_num(r.get("openInterest", 0)),
+                        "iv": _safe_num(r.get("impliedVolatility", 0)),
                         "inTheMoney": r.get("inTheMoney", False),
                     })
             except Exception:
@@ -1185,10 +1206,10 @@ def calc_expected_move(price, iv, days):
 
 def _passes_liquidity_filter(strike, min_volume=10, min_oi=50, max_spread_pct=25):
     """Check if a strike meets minimum liquidity requirements."""
-    vol = strike.get("volume", 0) or 0
-    oi = strike.get("openInterest", 0) or 0
-    bid = strike.get("bid", 0) or 0
-    ask = strike.get("ask", 0) or 0
+    vol = _safe_num(strike.get("volume", 0))
+    oi = _safe_num(strike.get("openInterest", 0))
+    bid = _safe_num(strike.get("bid", 0))
+    ask = _safe_num(strike.get("ask", 0))
 
     if vol < min_volume and oi < min_oi:
         return False
@@ -1313,8 +1334,8 @@ def generate_plays(ticker, price, chains, days_to_earnings=None, rsi=50, iv_30d=
                 "breakeven": round(breakeven, 2),
                 "pct_to_breakeven": round(pct_to_breakeven, 1),
                 "max_loss": round(max_loss, 0), "max_gain": "Unlimited",
-                "volume": int(strike_opt["volume"]),
-                "open_interest": int(strike_opt["openInterest"]),
+                "volume": _safe_int(strike_opt["volume"]),
+                "open_interest": _safe_int(strike_opt["openInterest"]),
                 "iv": round(strike_opt["iv"] * 100, 1),
                 "rationale": f"Bullish bias — RSI {rsi:.0f}, {'above' if price_above_sma20 else 'below'} SMA20. "
                              f"{'Earnings catalyst in ' + str(days_to_earnings) + 'd. ' if is_earnings_play else ''}"
@@ -1338,8 +1359,8 @@ def generate_plays(ticker, price, chains, days_to_earnings=None, rsi=50, iv_30d=
                 "breakeven": round(breakeven, 2),
                 "pct_to_breakeven": round(((price - breakeven) / price) * 100, 1),
                 "max_loss": round(max_loss, 0), "max_gain": f"${breakeven * 100:,.0f}",
-                "volume": int(strike_opt["volume"]),
-                "open_interest": int(strike_opt["openInterest"]),
+                "volume": _safe_int(strike_opt["volume"]),
+                "open_interest": _safe_int(strike_opt["openInterest"]),
                 "iv": round(strike_opt["iv"] * 100, 1),
                 "rationale": f"Bearish bias — RSI {rsi:.0f}, {'above' if price_above_sma20 else 'below'} SMA20. "
                              f"{'Earnings catalyst in ' + str(days_to_earnings) + 'd. ' if is_earnings_play else ''}"
@@ -1368,8 +1389,8 @@ def generate_plays(ticker, price, chains, days_to_earnings=None, rsi=50, iv_30d=
                 "breakeven": f"${be_down:.2f} / ${be_up:.2f}",
                 "pct_to_breakeven": round(move_needed, 1),
                 "max_loss": round(total_premium * 100, 0), "max_gain": "Unlimited",
-                "volume": int(atm_call["volume"] + atm_put["volume"]),
-                "open_interest": int(atm_call["openInterest"] + atm_put["openInterest"]),
+                "volume": _safe_int(atm_call["volume"] + atm_put["volume"]),
+                "open_interest": _safe_int(atm_call["openInterest"] + atm_put["openInterest"]),
                 "iv": round((atm_call["iv"] + atm_put["iv"]) / 2 * 100, 1),
                 "rationale": f"{'Earnings in ' + str(days_to_earnings) + 'd. ' if is_earnings_play else 'High IV environment. '}"
                              f"Needs >{move_needed:.1f}% move to profit. Expected move: ±{expected_move/price*100:.1f}%.",
@@ -1398,8 +1419,8 @@ def generate_plays(ticker, price, chains, days_to_earnings=None, rsi=50, iv_30d=
                     "breakeven": f"${otm_put['strike'] - total_premium:.2f} / ${otm_call['strike'] + total_premium:.2f}",
                     "pct_to_breakeven": round(max(move_needed_up, move_needed_down), 1),
                     "max_loss": round(total_premium * 100, 0), "max_gain": "Unlimited",
-                    "volume": int(otm_call["volume"] + otm_put["volume"]),
-                    "open_interest": int(otm_call["openInterest"] + otm_put["openInterest"]),
+                    "volume": _safe_int(otm_call["volume"] + otm_put["volume"]),
+                    "open_interest": _safe_int(otm_call["openInterest"] + otm_put["openInterest"]),
                     "iv": round((otm_call["iv"] + otm_put["iv"]) / 2 * 100, 1),
                     "rationale": f"Cheaper than straddle for earnings in {days_to_earnings}d. "
                                  f"Needs >{max(move_needed_up, move_needed_down):.1f}% move.",
@@ -1432,8 +1453,8 @@ def generate_plays(ticker, price, chains, days_to_earnings=None, rsi=50, iv_30d=
                     "pct_to_breakeven": round(((breakeven_val / price) - 1) * 100, 1),
                     "max_loss": round(max_loss_val, 0),
                     "max_gain": f"${max_profit:,.0f}",
-                    "volume": int(long_call["volume"] + short_call["volume"]),
-                    "open_interest": int(long_call["openInterest"] + short_call["openInterest"]),
+                    "volume": _safe_int(long_call["volume"] + short_call["volume"]),
+                    "open_interest": _safe_int(long_call["openInterest"] + short_call["openInterest"]),
                     "iv": round(long_call["iv"] * 100, 1),
                     "rationale": f"Defined-risk bullish. R/R: {reward_risk:.1f}:1. "
                                  f"{'Earnings in ' + str(days_to_earnings) + 'd. ' if is_earnings_play else ''}",
@@ -1466,8 +1487,8 @@ def generate_plays(ticker, price, chains, days_to_earnings=None, rsi=50, iv_30d=
                     "pct_to_breakeven": round(((price - breakeven_val) / price) * 100, 1),
                     "max_loss": round(max_loss_val, 0),
                     "max_gain": f"${max_profit:,.0f}",
-                    "volume": int(long_put["volume"] + short_put["volume"]),
-                    "open_interest": int(long_put["openInterest"] + short_put["openInterest"]),
+                    "volume": _safe_int(long_put["volume"] + short_put["volume"]),
+                    "open_interest": _safe_int(long_put["openInterest"] + short_put["openInterest"]),
                     "iv": round(long_put["iv"] * 100, 1),
                     "rationale": f"Defined-risk bearish. R/R: {reward_risk:.1f}:1.",
                     "risk_notes": f"Max loss ${max_loss_val:,.0f}, max gain ${max_profit:,.0f}."
@@ -1499,8 +1520,8 @@ def generate_plays(ticker, price, chains, days_to_earnings=None, rsi=50, iv_30d=
                         "pct_to_breakeven": round(((price - breakeven_val) / price) * 100, 1),
                         "max_loss": round(max_loss_val, 0),
                         "max_gain": f"${max_profit:,.0f}",
-                        "volume": int(short_put["volume"] + long_put["volume"]),
-                        "open_interest": int(short_put["openInterest"] + long_put["openInterest"]),
+                        "volume": _safe_int(short_put["volume"] + long_put["volume"]),
+                        "open_interest": _safe_int(short_put["openInterest"] + long_put["openInterest"]),
                         "iv": round(short_put["iv"] * 100, 1),
                         "rationale": f"Sell elevated IV ({iv_30d:.0f}%). Collect ${net_credit:.2f}. "
                                      f"Win if {ticker} stays above ${breakeven_val:.2f}.",
@@ -1552,8 +1573,8 @@ def generate_plays(ticker, price, chains, days_to_earnings=None, rsi=50, iv_30d=
                     ), 1),
                     "max_loss": round(max_loss_val, 0),
                     "max_gain": f"${max_profit:,.0f}",
-                    "volume": int(short_call["volume"] + long_call["volume"] + short_put["volume"] + long_put["volume"]),
-                    "open_interest": int(short_call["openInterest"] + long_call["openInterest"] + short_put["openInterest"] + long_put["openInterest"]),
+                    "volume": _safe_int(short_call["volume"] + long_call["volume"] + short_put["volume"] + long_put["volume"]),
+                    "open_interest": _safe_int(short_call["openInterest"] + long_call["openInterest"] + short_put["openInterest"] + long_put["openInterest"]),
                     "iv": round((short_call["iv"] + short_put["iv"]) / 2 * 100, 1),
                     "rationale": (f"Sell elevated IV ({iv_30d:.0f}%) on both sides. Collect ${total_credit:.2f}. "
                                   f"R/R: {rr_ic:.1f}:1. Win if {ticker} stays ${be_lower:.0f}-${be_upper:.0f}. "
