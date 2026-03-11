@@ -7,7 +7,7 @@
 **Live at**: https://cyber.keltonshockey.com (SSL via Let's Encrypt, nginx reverse proxy)
 **World**: https://cyber.keltonshockey.com/world (3D voxel city)
 **VPS**: DigitalOcean at `64.23.150.209`, code at `/opt/cyberscreener`
-**Repo**: `sniffer9793/cyberscreener` on GitHub
+**Repo**: `keltonshockey/cyberscreener` on GitHub (transferred from sniffer9793)
 
 ---
 
